@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --cursor-size: 20px;
+}
+
+body {
+  @apply bg-background text-primary antialiased;
+  /* Smooth scale font rendering */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar - refined */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 10px;
+  border: 3px solid #000; /* Create padding effect */
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+.no-scroll {
+  overflow: hidden;
+}
+
+/* Glassmorphism utilities */
+.glass-panel {
+  @apply bg-glass backdrop-blur-xl border border-white/5;
+}
