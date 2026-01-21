@@ -17,9 +17,9 @@ if [ ! -d "backend" ] || [ ! -d "frontend" ]; then
 fi
 
 # 1. 安装系统依赖
-echo "📦 步骤 1/8: 安装系统依赖..."
+echo "📦 步骤 1/9: 安装系统依赖..."
 sudo apt update
-sudo apt install -y nginx
+sudo apt install -y nginx gnupg curl
 
 # 检查 Node.js
 if ! command -v node &> /dev/null; then
@@ -34,11 +34,24 @@ if ! command -v pm2 &> /dev/null; then
     sudo npm install -g pm2
 fi
 
+# 检查 MongoDB
+if ! command -v mongod &> /dev/null; then
+    echo "📦 安装 MongoDB 7.0..."
+    curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
+       sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
+    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
+       sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+    sudo apt update
+    sudo apt install -y mongodb-org
+    sudo systemctl start mongod
+    sudo systemctl enable mongod
+fi
+
 echo "✅ 系统依赖安装完成"
 echo ""
 
 # 2. 创建上传目录
-echo "📁 步骤 2/8: 创建上传目录..."
+echo "📁 步骤 2/9: 创建上传目录..."
 sudo mkdir -p /var/www/lumina/uploads
 sudo mkdir -p /var/www/lumina/www
 sudo chown -R $USER:$USER /var/www/lumina
@@ -47,7 +60,7 @@ echo "✅ 目录创建完成"
 echo ""
 
 # 3. 部署后端
-echo "🔧 步骤 3/8: 部署后端..."
+echo "🔧 步骤 3/9: 部署后端..."
 cd backend
 echo "  → 安装依赖..."
 npm install
@@ -61,7 +74,7 @@ echo "✅ 后端部署完成"
 echo ""
 
 # 4. 部署前端
-echo "🎨 步骤 4/8: 部署前端..."
+echo "🎨 步骤 4/9: 部署前端..."
 cd ../frontend
 echo "  → 安装依赖..."
 npm install
@@ -74,7 +87,7 @@ echo "✅ 前端部署完成"
 echo ""
 
 # 5. 配置 Nginx
-echo "🌐 步骤 5/8: 配置 Nginx..."
+echo "🌐 步骤 5/9: 配置 Nginx..."
 sudo tee /etc/nginx/sites-available/lumina > /dev/null <<'EOF'
 server {
     listen 80;
@@ -114,19 +127,19 @@ echo "✅ Nginx 配置完成"
 echo ""
 
 # 6. 测试 Nginx 配置
-echo "🔍 步骤 6/8: 测试 Nginx 配置..."
+echo "🔍 步骤 6/9: 测试 Nginx 配置..."
 sudo nginx -t
 echo "✅ Nginx 配置测试通过"
 echo ""
 
 # 7. 重载 Nginx
-echo "🔄 步骤 7/8: 重载 Nginx..."
+echo "🔄 步骤 7/9: 重载 Nginx..."
 sudo systemctl reload nginx
 echo "✅ Nginx 重载完成"
 echo ""
 
 # 8. 配置 PM2 开机自启
-echo "⚙️  步骤 8/8: 配置 PM2 开机自启..."
+echo "⚙️  步骤 8/9: 配置 PM2 开机自启..."
 pm2 startup | tail -n 1 | sudo bash || true
 pm2 save
 echo "✅ PM2 开机自启配置完成"
@@ -140,6 +153,10 @@ echo ""
 
 echo "📊 PM2 状态："
 pm2 status
+
+echo ""
+echo "🗄️  MongoDB 状态："
+sudo systemctl status mongod --no-pager | head -n 3
 
 echo ""
 echo "🌐 Nginx 状态："
@@ -162,6 +179,7 @@ echo "📝 常用命令："
 echo "   查看后端日志: pm2 logs lumina-backend"
 echo "   重启后端: pm2 restart lumina-backend"
 echo "   查看后端状态: pm2 status"
+echo "   MongoDB 状态: sudo systemctl status mongod"
 echo "   重载 Nginx: sudo systemctl reload nginx"
 echo "   查看 Nginx 日志: sudo tail -f /var/log/nginx/error.log"
 echo ""

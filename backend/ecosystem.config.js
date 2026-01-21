@@ -12,6 +12,7 @@ module.exports = {
       NODE_ENV: 'production',
       PORT: 4000,
       FRONTEND_ORIGIN: 'http://114.116.225.151',
+      MONGODB_URI: 'mongodb://localhost:27017/lumina',
       UPLOAD_DIR: '/var/www/lumina/uploads',
       FILE_URL_PREFIX: 'http://114.116.225.151/uploads'
     }

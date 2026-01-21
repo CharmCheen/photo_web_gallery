@@ -38,9 +38,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 探索
               </button>
-              <button className="text-sm font-medium text-secondary hover:text-white transition-colors tracking-wide">
+              {/* <button className="text-sm font-medium text-secondary hover:text-white transition-colors tracking-wide">
                 精选集
-              </button>
+              </button> */}
            </div>
         </div>
 

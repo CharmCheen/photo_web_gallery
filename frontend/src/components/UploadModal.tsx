@@ -2,9 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UploadModalProps, Photo } from '../types';
 import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { Upload, X, CheckCircle2, Image as ImageIcon } from 'lucide-react';
 
 export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpload, onError }) => {
+    const { user } = useAuth();
     const [step, setStep] = useState<'drop' | 'details' | 'uploading' | 'success'>('drop');
     const [file, setFile] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string>('');
@@ -69,6 +71,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
             formData.append('title', metadata.title);
             formData.append('description', metadata.description);
             formData.append('tags', metadata.tags);
+            if (user?.id) {
+                formData.append('authorId', user.id);
+            }
 
             const uploaded = await api.photos.upload(formData);
             setProgress(100);

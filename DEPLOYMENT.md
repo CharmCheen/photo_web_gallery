@@ -97,6 +97,31 @@ sudo apt install -y nodejs
 sudo npm install -g pm2
 ```
 
+### 3.2 安装 MongoDB
+
+```bash
+# 导入 MongoDB GPG 密钥
+curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
+   sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
+
+# 添加 MongoDB 源
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
+   sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+
+# 更新包列表
+sudo apt update
+
+# 安装 MongoDB
+sudo apt install -y mongodb-org
+
+# 启动 MongoDB 服务
+sudo systemctl start mongod
+sudo systemctl enable mongod
+
+# 验证 MongoDB 运行状态
+sudo systemctl status mongod
+```
+
 ---
 
 ## 4. 部署后端
@@ -303,6 +328,26 @@ location /api/ {
 }
 ```
 
+### 9.4 MongoDB 连接失败
+
+检查 MongoDB 服务状态：
+
+```bash
+# 查看状态
+sudo systemctl status mongod
+
+# 重启 MongoDB
+sudo systemctl restart mongod
+
+# 查看日志
+sudo tail -f /var/log/mongodb/mongod.log
+```
+
+如果后端日志显示 "MongoDB 连接失败"：
+1. 确认 MongoDB 已启动
+2. 检查 `MONGODB_URI` 环境变量配置
+3. 验证连接：`mongosh mongodb://localhost:27017/lumina`
+
 ---
 
 ## 10. 环境变量说明
@@ -311,7 +356,7 @@ location /api/ {
 
 | 变量名 | 示例 | 说明 |
 |---|---|---|
-| VITE_API_BASE_URL | https://your-domain.com | 后端 API 地址 |
+| VITE_API_BASE_URL | http://114.116.225.151 | 后端 API 地址 |
 
 ### 10.2 后端环境变量
 
@@ -320,14 +365,41 @@ location /api/ {
 | PORT | 4000 | 后端监听端口 |
 | FRONTEND_ORIGIN | http://114.116.225.151 | 允许的前端域名（多个用逗号分隔） |
 | NODE_ENV | production | 生产环境（不返回短信验证码明文） |
+| MONGODB_URI | mongodb://localhost:27017/lumina | MongoDB 连接字符串 |
 | UPLOAD_DIR | /var/www/lumina/uploads | 文件上传存储目录 |
 | FILE_URL_PREFIX | http://114.116.225.151/uploads | 文件访问 URL 前缀 |
 
 ---
 
-## 11. 本地验证（可选）
+## 11. 数据存储说明
 
-### 11.1 后端本地运行
+### 11.1 存储架构
+
+- **用户信息**：MongoDB 数据库 `lumina.users` 集合
+- **照片元数据**：MongoDB 数据库 `lumina.photos` 集合
+- **照片文件**：本地磁盘 `/var/www/lumina/uploads/`
+- **短信验证码**：MongoDB 数据库 `lumina.smscodes` 集合（5分钟自动过期）
+
+### 11.2 数据备份
+
+```bash
+# 备份 MongoDB
+mongodump --db lumina --out /backup/lumina-$(date +%Y%m%d)
+
+# 备份照片文件
+tar -czf /backup/uploads-$(date +%Y%m%d).tar.gz /var/www/lumina/uploads
+
+# 恢复 MongoDB
+mongorestore --db lumina /backup/lumina-20260121/lumina
+```
+
+详细存储方案说明：[STORAGE.md](STORAGE.md)
+
+---
+
+## 12. 本地验证（可选）
+
+### 12.1 后端本地运行
 
 ```bash
 cd backend
@@ -337,7 +409,7 @@ npm run dev
 
 默认：`http://localhost:4000`
 
-### 11.2 前端本地运行
+### 12.2 前端本地运行
 
 创建 `frontend/.env.development`：
 
@@ -357,13 +429,14 @@ npm run dev
 
 ---
 
-## 12. 完整部署检查清单
+## 13. 完整部署检查清单
 
 - [ ] 修改 `frontend/.env.production` 中的 API 地址
 - [ ] 修改 `backend/ecosystem.config.js` 中的环境变量
 - [ ] 上传代码到服务器
-- [ ] 安装 Nginx + Node.js + PM2
+- [ ] 安装 Nginx + Node.js + PM2 + MongoDB
 - [ ] 构建并启动后端（PM2）
+- [ ] 验证 MongoDB 连接成功
 - [ ] 创建上传目录并设置权限
 - [ ] 构建并部署前端静态文件
 - [ ] 配置 Nginx 反向代理

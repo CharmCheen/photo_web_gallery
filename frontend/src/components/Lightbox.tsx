@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Photo } from '../types';
+import { api } from '../services/api';
 import { Download, X, Heart, Share2 } from 'lucide-react'; 
 
 interface LightboxProps {
@@ -10,6 +11,60 @@ interface LightboxProps {
 }
 
 export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload }) => {
+  const [currentPhoto, setCurrentPhoto] = useState(photo);
+  const [isLiking, setIsLiking] = useState(false);
+
+  const handleLike = async () => {
+    if (isLiking) return;
+    setIsLiking(true);
+    try {
+      const result = await api.photos.like(currentPhoto.id);
+      setCurrentPhoto(prev => ({ ...prev, likes: result.likes }));
+    } catch (error) {
+      console.error('点赞失败:', error);
+    } finally {
+      setIsLiking(false);
+    }
+  };
+
+  const handleShare = async () => {
+    const url = window.location.origin + '/?photo=' + currentPhoto.id;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: currentPhoto.description || '精彩照片',
+          text: `来自 ${currentPhoto.author} 的作品`,
+          url: url,
+        });
+      } catch (error) {
+        // User cancelled or share failed
+        copyToClipboard(url);
+      }
+    } else {
+      copyToClipboard(url);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      alert('链接已复制到剪贴板');
+    }).catch(() => {
+      alert('分享链接：' + text);
+    });
+  };
+
+  const handleDownload = () => {
+    // 创建一个隐藏的 a 标签来触发下载
+    const link = document.createElement('a');
+    link.href = currentPhoto.url;
+    link.download = `lumina-${currentPhoto.id}.jpg`;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    onDownload(currentPhoto);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -38,9 +93,9 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload }
         {/* Image Area */}
         <div className="flex-1 bg-black relative flex items-center justify-center p-0 md:p-8">
            <motion.img
-            layoutId={`image-${photo.id}`}
-            src={photo.url}
-            alt={photo.description}
+            layoutId={`image-${currentPhoto.id}`}
+            src={currentPhoto.url}
+            alt={currentPhoto.description}
             className="max-h-full max-w-full object-contain rounded-lg shadow-2xl"
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
           />
@@ -58,11 +113,11 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload }
             {/* Header */}
             <div className="flex items-center space-x-4 mb-10">
                 <div className="w-14 h-14 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center text-white font-medium text-xl shadow-lg">
-                    {photo.author[0]}
+                    {currentPhoto.author[0]}
                 </div>
                 <div>
-                    <h3 className="text-white font-semibold text-lg tracking-tight">{photo.author}</h3>
-                    <p className="text-secondary text-sm font-medium">�Ӿ���Ӱ��</p>
+                    <h3 className="text-white font-semibold text-lg tracking-tight">{currentPhoto.author}</h3>
+                    <p className="text-secondary text-sm font-medium">独立摄影师</p>
                 </div>
             </div>
 
@@ -71,16 +126,16 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload }
             {/* Description */}
             <div className="space-y-8">
                 <div>
-                   <h4 className="text-secondary text-xs font-bold uppercase tracking-widest mb-3 opacity-60">��Ʒڹ��</h4>
+                   <h4 className="text-secondary text-xs font-bold uppercase tracking-widest mb-3 opacity-60">作品描述</h4>
                    <p className="text-primary text-[15px] leading-7 font-normal text-justify">
-                    {photo.description || "����Ʒ����������������"}
+                    {currentPhoto.description || "这个作品没有添加描述"}
                    </p>
                 </div>
 
                 <div>
-                   <h4 className="text-secondary text-xs font-bold uppercase tracking-widest mb-3 opacity-60">��ǩ</h4>
+                   <h4 className="text-secondary text-xs font-bold uppercase tracking-widest mb-3 opacity-60">标签</h4>
                    <div className="flex flex-wrap gap-2">
-                      {photo.tags.map(tag => (
+                      {currentPhoto.tags.map(tag => (
                           <span key={tag} className="px-3 py-1.5 rounded-lg bg-white/5 text-primary/80 text-xs font-medium hover:bg-white/10 transition-colors cursor-default border border-white/5">
                               #{tag}
                           </span>
@@ -90,8 +145,8 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload }
 
                 <div className="grid grid-cols-2 gap-6 pt-2">
                     <div>
-                        <span className="block text-secondary text-xs mb-1.5 opacity-60 font-bold uppercase tracking-wider">�ߴ�</span>
-                        <span className="text-primary font-mono text-sm">{photo.width}  {photo.height}</span>
+                        <span className="block text-secondary text-xs mb-1.5 opacity-60 font-bold uppercase tracking-wider">尺寸</span>
+                        <span className="text-primary font-mono text-sm">{currentPhoto.width} × {currentPhoto.height}</span>
                     </div>
                 </div>
             </div>
@@ -100,19 +155,26 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload }
           {/* Action Bar */}
           <div className="p-8 border-t border-white/5 space-y-3 bg-[#1c1c1e]/40">
              <button 
-                onClick={() => onDownload(photo)}
+                onClick={handleDownload}
                 className="w-full bg-white text-black py-4 rounded-2xl font-semibold hover:bg-[#f5f5f7] transition-all flex items-center justify-center space-x-2 active:scale-[0.98] shadow-lg shadow-white/5"
             >
                 <Download size={18} />
-                <span>����ԭͼ</span>
+                <span>下载原图</span>
              </button>
              
              <div className="flex space-x-3">
-                 <button className="flex-1 bg-white/5 text-white/90 py-4 rounded-2xl font-medium hover:bg-white/10 transition-all flex items-center justify-center space-x-2 border border-white/5">
-                    <Heart size={18} />
-                    <span>{photo.likes}</span>
+                 <button 
+                    onClick={handleLike}
+                    disabled={isLiking}
+                    className="flex-1 bg-white/5 text-white/90 py-4 rounded-2xl font-medium hover:bg-white/10 transition-all flex items-center justify-center space-x-2 border border-white/5 disabled:opacity-50"
+                 >
+                    <Heart size={18} className={isLiking ? 'animate-pulse' : ''} />
+                    <span>{currentPhoto.likes}</span>
                  </button>
-                 <button className="flex-1 bg-white/5 text-white/90 py-4 rounded-2xl font-medium hover:bg-white/10 transition-all flex items-center justify-center border border-white/5">
+                 <button 
+                    onClick={handleShare}
+                    className="flex-1 bg-white/5 text-white/90 py-4 rounded-2xl font-medium hover:bg-white/10 transition-all flex items-center justify-center border border-white/5"
+                 >
                     <Share2 size={18} />
                  </button>
              </div>

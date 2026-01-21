@@ -65,6 +65,11 @@ export const api = {
     upload: async (payload: FormData): Promise<Photo> => {
       return requestForm('/api/photos/upload', payload);
     },
+    like: async (id: string): Promise<{ likes: number }> => {
+      return requestJson(`/api/photos/${id}/like`, {
+        method: 'POST',
+      });
+    },
   },
   user: {
     getProfile: async (id: string): Promise<User> => {
