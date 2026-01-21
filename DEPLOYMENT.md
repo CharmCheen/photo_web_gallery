@@ -1,14 +1,333 @@
-# 部署指南（本地验证 → 上云）
+# 部署指南（远程服务器部署）
 
-本文档用于指导本项目在本地验证并部署到云端。前端使用 Vite + React，后端使用 Node.js + Express。
+本文档用于指导项目部署到远程 Linux 服务器。前端使用 Vite + React，后端使用 Node.js + Express。
 
 ---
 
-## 1. 本地验证
+## 1. 部署前准备
 
-### 1.1 后端（API）
+### 1.1 修改前端配置
 
-> 建议使用 **CMD** 或 **PowerShell（已放开执行策略）** 运行 npm 脚本。
+创建生产环境配置文件 `frontend/.env.production`：
+
+```env
+# 替换为你的服务器域名或 IP
+VITE_API_BASE_URL=https://your-domain.com
+```
+
+### 1.2 修改后端配置
+
+复制并修改环境变量文件：
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+编辑 `backend/.env`：
+
+```env
+PORT=4000
+FRONTEND_ORIGIN=http://114.116.225.151
+NODE_ENV=production
+UPLOAD_DIR=/var/www/lumina/uploads
+FILE_URL_PREFIX=http://114.116.225.151/uploads
+```
+
+或使用 PM2 配置文件 `backend/ecosystem.config.js`（已创建）：
+
+```javascript
+module.exports = {
+  apps: [{
+    name: 'lumina-backend',
+    script: 'dist/server.js',
+    instances: 1,
+    exec_mode: 'cluster',
+    autorestart: true,
+    watch: false,
+    max_memory_restart: '1G',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 4000,
+      FRONTEND_ORIGIN: 'http://114.116.225.151',
+      UPLOAD_DIR: '/var/www/lumina/uploads',
+      FILE_URL_PREFIX: 'http://114.116.225.151/uploads'
+    }
+  }]
+};
+```
+
+---
+
+## 2. 上传代码到服务器
+
+### 方式 A：使用 Git（推荐）
+
+```bash
+# 在服务器上
+cd /var/www
+git clone https://your-repo-url.git lumina
+cd lumina
+```
+
+### 方式 B：使用 SCP/SFTP
+
+```bash
+# 在本地
+scp -r ./photo_establish root@114.116.225.151:/var/www/lumina
+```
+
+---
+
+## 3. 服务器环境配置
+
+### 3.1 安装基础依赖
+
+```bash
+# 更新包管理器
+sudo apt update
+
+# 安装 Nginx
+sudo apt install -y nginx
+
+# 安装 Node.js 20.x
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# 安装 PM2
+sudo npm install -g pm2
+```
+
+---
+
+## 4. 部署后端
+
+### 4.1 构建后端
+
+```bash
+cd /var/www/lumina/backend
+npm install
+npm run build
+```
+
+### 4.2 创建上传目录
+
+```bash
+sudo mkdir -p /var/www/lumina/uploads
+sudo chown -R $USER:$USER /var/www/lumina/uploads
+sudo chmod 755 /var/www/lumina/uploads
+```
+
+### 4.3 启动后端服务
+
+使用 PM2 配置文件启动：
+
+```bash
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
+```
+
+或直接启动（需先设置环境变量）：
+
+```bash
+pm2 start dist/server.js --name lumina-backend \
+  --env NODE_ENV=production \
+  --env PORT=4000 \
+  --env FRONTEND_ORIGIN=https://your-domain.com \
+  --env UPLOAD_DIR=/var/www/lumina/uploads \
+  --env FILE_URL_PREFIX=https://your-domain.com/uploads
+
+pm2 save
+pm2 startup
+```
+
+验证后端运行：
+
+```bash
+curl http://localhost:4000/api/health
+# 应返回: {"status":"ok"}
+```
+
+---
+
+## 5. 部署前端
+
+### 5.1 构建前端
+
+```bash
+cd /var/www/lumina/frontend
+npm install
+npm run build
+```
+
+### 5.2 部署静态文件
+
+```bash
+sudo mkdir -p /var/www/lumina/www
+sudo cp -r dist/* /var/www/lumina/www/
+sudo chown -R www-data:www-data /var/www/lumina/www
+```
+
+---
+
+## 6. Nginx 配置
+
+### 6.1 创建 Nginx 站点配置
+
+```bash
+sudo nano /etc/nginx/sites-available/lumina
+```
+
+### 6.2 HTTP 配置（基础版）
+
+```nginx
+server {
+    listen 80;
+    server_name 114.116.225.151;
+
+    # 前端静态文件
+    root /var/www/lumina/www;
+    index index.html;
+
+    # 前端路由
+    location / {
+        try_files $uri /index.html;
+    }
+
+    # 后端 API 代理
+    location /api/ {
+        proxy_pass http://127.0.0.1:4000/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 上传文件访问
+    location /uploads/ {
+        alias /var/www/lumina/uploads/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # 客户端最大上传文件大小
+    client_max_body_size 10M;
+}
+```
+
+### 6.3 启用站点
+
+```bash
+sudo ln -s /etc/nginx/sites-available/lumina /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+---
+
+## 7. HTTPS 配置（可选 - 需要域名）
+
+⚠️ **注意**：由于使用 IP 地址访问，无法配置 HTTPS。如果未来购买域名，可以按以下步骤配置：
+
+### 7.1 安装 Certbot
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+```
+
+### 7.2 申请 SSL 证书（需要域名）
+
+```bash
+sudo certbot --nginx -d your-domain.com
+```
+
+---
+
+## 8. 验证部署
+
+### 8.1 检查后端运行状态
+
+```bash
+pm2 status
+# 应看到 lumina-backend 状态为 online
+
+curl http://localhost:4000/api/health
+# 应返回：{"status":"ok"}
+```
+
+### 8.2 检查 Nginx 配置
+
+```bash
+sudo nginx -t
+# 应返回：syntax is ok
+
+sudo systemctl status nginx
+# 应显示 active (running)
+```
+
+### 8.3 访问网站
+
+浏览器打开：`http://114.116.225.151`
+
+---
+
+## 9. 常见问题
+
+### 9.1 CORS 错误
+
+确保后端 `FRONTEND_ORIGIN` 配置正确：
+
+```bash
+pm2 restart lumina-backend --update-env
+```
+
+### 9.2 上传文件失败
+
+检查上传目录权限：
+
+```bash
+sudo chmod 755 /var/www/lumina/uploads
+sudo chown -R $USER:$USER /var/www/lumina/uploads
+```
+
+### 9.3 API 404 错误
+
+确认 Nginx 配置中 `proxy_pass` 路径正确：
+
+```nginx
+location /api/ {
+    proxy_pass http://127.0.0.1:4000/api/;  # 注意末尾的 /api/
+}
+```
+
+---
+
+## 10. 环境变量说明
+
+### 10.1 前端环境变量
+
+| 变量名 | 示例 | 说明 |
+|---|---|---|
+| VITE_API_BASE_URL | https://your-domain.com | 后端 API 地址 |
+
+### 10.2 后端环境变量
+
+| 变量名 | 示例 | 说明 |
+|---|---|---|
+| PORT | 4000 | 后端监听端口 |
+| FRONTEND_ORIGIN | http://114.116.225.151 | 允许的前端域名（多个用逗号分隔） |
+| NODE_ENV | production | 生产环境（不返回短信验证码明文） |
+| UPLOAD_DIR | /var/www/lumina/uploads | 文件上传存储目录 |
+| FILE_URL_PREFIX | http://114.116.225.151/uploads | 文件访问 URL 前缀 |
+
+---
+
+## 11. 本地验证（可选）
+
+### 11.1 后端本地运行
 
 ```bash
 cd backend
@@ -16,10 +335,46 @@ npm install
 npm run dev
 ```
 
-默认端口：`http://localhost:4000`
+默认：`http://localhost:4000`
 
-健康检查：
-- `GET http://localhost:4000/api/health`
+### 11.2 前端本地运行
+
+创建 `frontend/.env.development`：
+
+```env
+VITE_API_BASE_URL=http://localhost:4000
+```
+
+启动：
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+默认：`http://localhost:3000`
+
+---
+
+## 12. 完整部署检查清单
+
+- [ ] 修改 `frontend/.env.production` 中的 API 地址
+- [ ] 修改 `backend/ecosystem.config.js` 中的环境变量
+- [ ] 上传代码到服务器
+- [ ] 安装 Nginx + Node.js + PM2
+- [ ] 构建并启动后端（PM2）
+- [ ] 创建上传目录并设置权限
+- [ ] 构建并部署前端静态文件
+- [ ] 配置 Nginx 反向代理
+- [ ] 申请 SSL 证书（HTTPS）
+- [ ] 测试所有功能（注册、登录、上传、浏览）
+
+---
+
+完成以上步骤后，访问 `http://114.116.225.151` 即可使用完整功能。
+
+⚠️ **注意**：由于使用 IP 地址 + HTTP （非 HTTPS），浏览器可能会显示“不安全”警告，这是正常现象。如果未来购买域名，可以配置 HTTPS 证书。
 
 ## 3. 方案 A：同机部署（Nginx + PM2）
 
@@ -147,7 +502,7 @@ npm run dev
 - HTTPS（Certbot）自动续期
 | 变量名 | 示例 | 说明 |
 |---|---|---|
-| VITE_API_BASE_URL | https://api.your-domain.com | 后端 API 地址 |
+| VITE_API_BASE_URL | http://114.116.225.151 | 后端 API 地址 |
 ## 6. 常见问题
 ### 2.2 后端（Express）
 
