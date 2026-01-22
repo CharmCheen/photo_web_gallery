@@ -5,7 +5,8 @@ import { z } from 'zod';
 import path from 'path';
 import fs from 'fs';
 import { connectDatabase } from './database.js';
-import { UserModel, SmsCodeModel, PhotoModel } from './models.js';
+import { UserModel, VerificationCodeModel, PhotoModel } from './models.js';
+import { sendVerificationEmail } from './emailService.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -13,6 +14,9 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:3000,ht
   .split(',')
   .map((origin: string) => origin.trim())
   .filter(Boolean);
+const ALLOW_UNVERIFIED_SIGNUP = process.env.ALLOW_UNVERIFIED_SIGNUP !== 'false';
+const CODE_TTL_MS = 5 * 60 * 1000;
+const CODE_COOLDOWN_SECONDS = 60;
 
 // 配置文件上传目录
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
@@ -64,6 +68,38 @@ const upload = multer({
 
 const randomCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
+const issueVerificationCode = async (options: { channel: 'sms' | 'email'; phone?: string; email?: string; }) => {
+  const { channel, phone, email } = options;
+  if (channel === 'sms' && !phone) throw new Error('手机号必填');
+  if (channel === 'email' && !email) throw new Error('邮箱必填');
+
+  const code = randomCode();
+  const expiresAt = new Date(Date.now() + CODE_TTL_MS);
+
+  const filter = channel === 'sms' ? { channel, phone } : { channel, email };
+  await VerificationCodeModel.deleteMany(filter);
+  await VerificationCodeModel.create({ channel, phone, email, code, expiresAt });
+
+  if (channel === 'email' && email) {
+    await sendVerificationEmail(email, code);
+  }
+
+  return code;
+};
+
+const verifyCode = async (options: { channel: 'sms' | 'email'; phone?: string; email?: string; code: string; }) => {
+  const { channel, phone, email, code } = options;
+  const filter = channel === 'sms' ? { channel, phone } : { channel, email };
+
+  const record = await VerificationCodeModel.findOne({
+    ...filter,
+    code,
+    expiresAt: { $gt: new Date() },
+  });
+
+  return Boolean(record);
+};
+
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
@@ -76,24 +112,38 @@ app.post('/api/auth/sms/send', async (req: Request, res: Response) => {
     return;
   }
 
-  const code = randomCode();
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-  
-  // 删除旧验证码
-  await SmsCodeModel.deleteMany({ phone: result.data.phone });
-  
-  // 保存新验证码
-  await SmsCodeModel.create({
-    phone: result.data.phone,
-    code,
-    expiresAt,
-  });
+  try {
+    const code = await issueVerificationCode({ channel: 'sms', phone: result.data.phone });
 
-  res.json({
-    message: '验证码已发送',
-    cooldown: 60,
-    code: process.env.NODE_ENV === 'production' ? undefined : code,
-  });
+    res.json({
+      message: '验证码已发送',
+      cooldown: CODE_COOLDOWN_SECONDS,
+      code: process.env.NODE_ENV === 'production' ? undefined : code,
+    });
+  } catch (error) {
+    res.status(500).json({ message: '验证码发送失败' });
+  }
+});
+
+app.post('/api/auth/email/send', async (req: Request, res: Response) => {
+  const schema = z.object({ email: z.string().email() });
+  const result = schema.safeParse(req.body);
+  if (!result.success) {
+    res.status(400).json({ message: '请输入有效邮箱' });
+    return;
+  }
+
+  try {
+    const code = await issueVerificationCode({ channel: 'email', email: result.data.email });
+
+    res.json({
+      message: '验证码已发送至邮箱',
+      cooldown: CODE_COOLDOWN_SECONDS,
+      code: process.env.NODE_ENV === 'production' ? undefined : code,
+    });
+  } catch (error) {
+    res.status(500).json({ message: '验证码发送失败' });
+  }
 });
 
 app.post('/api/auth/login', async (req: Request, res: Response) => {
@@ -131,15 +181,10 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       res.status(400).json({ message: '请输入手机号和验证码' });
       return;
     }
-    
-    // 验证验证码
-    const smsCode = await SmsCodeModel.findOne({ 
-      phone: payload.phone,
-      code: payload.code,
-      expiresAt: { $gt: new Date() }
-    });
-    
-    if (!smsCode) {
+
+    const isValid = await verifyCode({ channel: 'sms', phone: payload.phone, code: payload.code });
+
+    if (!isValid) {
       res.status(401).json({ message: '验证码错误或已过期' });
       return;
     }
@@ -165,44 +210,80 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 app.post('/api/auth/register', async (req: Request, res: Response) => {
   const schema = z.object({
     name: z.string().min(1),
-    phone: z.string().min(6),
-    code: z.string().length(6),
+    phone: z.string().min(6).optional(),
     email: z.string().email().optional(),
+    code: z.string().length(6).optional(),
     password: z.string().min(6).optional(),
   });
 
   const result = schema.safeParse(req.body);
   if (!result.success) {
-    res.status(400).json({ message: '请填写姓名、手机号和验证码' });
+    res.status(400).json({ message: '请填写必要信息' });
     return;
   }
 
-  // 验证验证码
-  const smsCode = await SmsCodeModel.findOne({
-    phone: result.data.phone,
-    code: result.data.code,
-    expiresAt: { $gt: new Date() }
-  });
-  
-  if (!smsCode) {
-    res.status(401).json({ message: '验证码错误或已过期' });
+  const { name, phone, email, code, password } = result.data;
+  const wantsPhone = Boolean(phone);
+  const wantsEmail = Boolean(email);
+
+  if (wantsPhone && wantsEmail) {
+    res.status(400).json({ message: '请选择绑定手机号或邮箱中的一种' });
     return;
   }
 
-  // 检查用户是否已存在
-  const existingUser = await UserModel.findOne({ phone: result.data.phone });
-  if (existingUser) {
-    res.status(400).json({ message: '该手机号已注册' });
+  if (!wantsPhone && !wantsEmail && !ALLOW_UNVERIFIED_SIGNUP) {
+    res.status(400).json({ message: '请提供手机号或邮箱完成验证' });
     return;
   }
 
-  // 创建新用户
+  if (wantsPhone && !code) {
+    res.status(400).json({ message: '请输入手机验证码' });
+    return;
+  }
+
+  if (wantsEmail && !code) {
+    res.status(400).json({ message: '请输入邮箱验证码' });
+    return;
+  }
+
+  if (wantsPhone && code) {
+    const phoneValid = await verifyCode({ channel: 'sms', phone, code });
+    if (!phoneValid) {
+      res.status(401).json({ message: '手机验证码错误或已过期' });
+      return;
+    }
+  }
+
+  if (wantsEmail && code) {
+    const emailValid = await verifyCode({ channel: 'email', email, code });
+    if (!emailValid) {
+      res.status(401).json({ message: '邮箱验证码错误或已过期' });
+      return;
+    }
+  }
+
+  if (wantsPhone) {
+    const existingPhoneUser = await UserModel.findOne({ phone });
+    if (existingPhoneUser) {
+      res.status(400).json({ message: '该手机号已注册' });
+      return;
+    }
+  }
+
+  if (wantsEmail) {
+    const existingEmailUser = await UserModel.findOne({ email });
+    if (existingEmailUser) {
+      res.status(400).json({ message: '该邮箱已注册' });
+      return;
+    }
+  }
+
   const user = await UserModel.create({
-    name: result.data.name,
-    email: result.data.email,
-    phone: result.data.phone,
-    password: result.data.password, // 实际应该加密
-    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(result.data.name)}`,
+    name,
+    email,
+    phone,
+    password, // 实际应该加密
+    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
     bio: '新晋视觉创作者。',
   });
 

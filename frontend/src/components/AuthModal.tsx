@@ -9,6 +9,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
   const { login, register, isLoading } = useAuth();
   const [formData, setFormData] = useState({ name: '', email: '', password: '', phone: '', code: '' });
   const [loginMethod, setLoginMethod] = useState<'password' | 'sms'>('sms');
+  const [registerMethod, setRegisterMethod] = useState<'none' | 'phone' | 'email'>('none');
   const [localError, setLocalError] = useState('');
   const [localHint, setLocalHint] = useState('');
   const [codeCooldown, setCodeCooldown] = useState(0);
@@ -19,6 +20,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
       setLocalError('');
       setLocalHint('');
       setLoginMethod('sms');
+      setRegisterMethod('none');
       setCodeCooldown(0);
     }
   }, [isOpen, mode]);
@@ -31,16 +33,59 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
     return () => clearInterval(timer);
   }, [codeCooldown]);
 
-  const handleSendCode = async () => {
-    if (!formData.phone.trim()) {
-      setLocalError('请输入手机号');
-      return;
+  useEffect(() => {
+    if (mode === 'register') {
+      setCodeCooldown(0);
+      setLocalHint('');
+      setLocalError('');
     }
+  }, [registerMethod, mode]);
+
+  const handleSendCode = async () => {
     try {
       setLocalError('');
-      const result = await api.auth.sendSms(formData.phone.trim());
-      setLocalHint(result.code ? `验证码已发送（演示：${result.code}）` : '验证码已发送');
-      setCodeCooldown(result.cooldown || 60);
+
+      if (mode === 'login') {
+        if (loginMethod !== 'sms') {
+          setLocalError('当前登录方式无需验证码');
+          return;
+        }
+        if (!formData.phone.trim()) {
+          setLocalError('请输入手机号');
+          return;
+        }
+        const result = await api.auth.sendSms(formData.phone.trim());
+        setLocalHint(result.code ? `验证码已发送（演示：${result.code}）` : '验证码已发送');
+        setCodeCooldown(result.cooldown || 60);
+        return;
+      }
+
+      if (registerMethod === 'none') {
+        setLocalError('当前注册方式无需验证码');
+        return;
+      }
+
+      if (registerMethod === 'phone') {
+        if (!formData.phone.trim()) {
+          setLocalError('请输入手机号');
+          return;
+        }
+        const result = await api.auth.sendSms(formData.phone.trim());
+        setLocalHint(result.code ? `验证码已发送（演示：${result.code}）` : '验证码已发送');
+        setCodeCooldown(result.cooldown || 60);
+        return;
+      }
+
+      if (registerMethod === 'email') {
+        if (!formData.email.trim()) {
+          setLocalError('请输入邮箱');
+          return;
+        }
+        const result = await api.auth.sendEmail(formData.email.trim());
+        setLocalHint(result.code ? `验证码已发送至邮箱（演示：${result.code}）` : '验证码已发送至邮箱');
+        setCodeCooldown(result.cooldown || 60);
+        return;
+      }
     } catch (err: any) {
       setLocalError(err.message || '发送失败');
     }
@@ -50,6 +95,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
     e.preventDefault();
     setLocalError('');
 
+    let completed = false;
+
     try {
       if (mode === 'login') {
         if (loginMethod === 'password') {
@@ -58,27 +105,68 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
             return;
           }
           await login({ method: 'password', email: formData.email.trim(), password: formData.password.trim() });
+          completed = true;
         } else {
           if (!formData.phone.trim() || !formData.code.trim()) {
             setLocalError('请输入手机号和验证码');
             return;
           }
           await login({ method: 'sms', phone: formData.phone.trim(), code: formData.code.trim() });
+          completed = true;
         }
       } else {
-        if (!formData.name.trim() || !formData.phone.trim() || !formData.code.trim()) {
-          setLocalError('请填写姓名、手机号和验证码');
+        const name = formData.name.trim();
+        const email = formData.email.trim();
+        const phone = formData.phone.trim();
+        const code = formData.code.trim();
+        const password = formData.password.trim();
+
+        if (!name) {
+          setLocalError('请填写名字');
           return;
         }
-        await register({
-          name: formData.name.trim(),
-          email: formData.email.trim() || undefined,
-          password: formData.password.trim() || undefined,
-          phone: formData.phone.trim(),
-          code: formData.code.trim(),
-        });
+
+        if (registerMethod === 'none') {
+          if (email || phone) {
+            setLocalError('如需绑定邮箱或手机号，请选择对应验证方式');
+            return;
+          }
+          await register({ name, password: password || undefined });
+          setLocalHint('已创建账号，无需验证');
+          completed = true;
+          
+        }
+
+        if (registerMethod === 'phone') {
+          if (!phone || !code) {
+            setLocalError('请输入手机号和验证码');
+            return;
+          }
+          await register({
+            name,
+            phone,
+            code,
+            password: password || undefined,
+          });
+          completed = true;
+          
+        }
+
+        if (registerMethod === 'email') {
+          if (!email || !code) {
+            setLocalError('请输入邮箱和验证码');
+            return;
+          }
+          await register({
+            name,
+            email,
+            code,
+            password: password || undefined,
+          });
+          completed = true;
+        }
       }
-      if (onSuccess) onSuccess();
+      if (completed && onSuccess) onSuccess();
     } catch (err: any) {
       setLocalError(err.message || '认证失败');
     }
@@ -133,6 +221,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
                 </div>
               )}
 
+              {mode === 'register' && (
+                <div className="w-full mb-6">
+                  <div className="bg-black/30 border border-white/10 rounded-full p-1 grid grid-cols-3 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setRegisterMethod('none')}
+                      className={`py-2 rounded-full transition-colors ${registerMethod === 'none' ? 'bg-white text-black' : 'text-secondary hover:text-white'}`}
+                    >
+                      无验证
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRegisterMethod('email')}
+                      className={`py-2 rounded-full transition-colors ${registerMethod === 'email' ? 'bg-white text-black' : 'text-secondary hover:text-white'}`}
+                    >
+                      邮箱验证码
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRegisterMethod('phone')}
+                      className={`py-2 rounded-full transition-colors ${registerMethod === 'phone' ? 'bg-white text-black' : 'text-secondary hover:text-white'}`}
+                    >
+                      手机验证码
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <form onSubmit={handleSubmit} className="w-full space-y-5">
                 {mode === 'register' && (
                   <div className="space-y-1.5">
@@ -147,7 +263,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
                   </div>
                 )}
 
-                {(mode === 'login' ? loginMethod === 'sms' : true) && (
+                {((mode === 'login' && loginMethod === 'sms') || (mode === 'register' && registerMethod === 'phone')) && (
                   <div className="space-y-1.5">
                     <input
                       type="tel"
@@ -159,7 +275,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
                   </div>
                 )}
 
-                {(mode === 'login' ? loginMethod === 'sms' : true) && (
+                {((mode === 'login' && loginMethod === 'sms') || (mode === 'register' && registerMethod !== 'none')) && (
                   <div className="space-y-1.5">
                     <div className="flex gap-3">
                       <input
@@ -167,7 +283,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
                         value={formData.code}
                         onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                         className="flex-1 bg-[#2c2c2e] border-none rounded-lg px-4 py-3.5 text-white placeholder-secondary/50 focus:ring-2 focus:ring-accent/50 outline-none transition-all text-[15px]"
-                        placeholder="短信验证码"
+                        placeholder={mode === 'register' && registerMethod === 'email' ? '邮箱验证码' : '验证码'}
                       />
                       <button
                         type="button"
@@ -181,7 +297,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
                   </div>
                 )}
 
-                {(mode === 'login' ? loginMethod === 'password' : true) && (
+                {((mode === 'login' && loginMethod === 'password') || (mode === 'register' && registerMethod === 'email')) && (
                   <div className="space-y-1.5">
                     <input
                       type="email"

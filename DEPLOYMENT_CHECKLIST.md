@@ -16,7 +16,6 @@
 ✅ `backend/ecosystem.config.js` → `http://114.116.225.151`  
 ✅ `backend/.env.example` → `http://114.116.225.151`
 
----
 
 ## 📦 部署前必须修改的配置
 
@@ -30,6 +29,28 @@ VITE_API_BASE_URL=http://114.116.225.151
 ```
 
 **作用**：告诉前端去哪里请求后端 API
+
+#### 完整的前端环境文件说明
+
+项目使用三种前端环境配置文件，根据场景选择：
+
+1. **`frontend/.env.local`**（开发 + 生产通用）
+  - 当前配置：`VITE_API_BASE_URL=http://114.116.225.151`
+  - 用途：本地开发或紧急测试
+  - 优先级：最高（覆盖其他配置）
+  - ⚠️ 注意：不要提交到 Git，已添加到 .gitignore
+
+2. **`frontend/.env.development`**（开发环境）
+  - 预期配置：`VITE_API_BASE_URL=http://localhost:4000`
+  - 用途：本地 npm run dev 开发
+  - 在 `frontend/.env.local` 不存在时使用
+
+3. **`frontend/.env.production`**（生产环境）
+  - 预期配置：`VITE_API_BASE_URL=http://114.116.225.151`
+  - 用途：运行 npm run build 构建时使用
+  - 在 `frontend/.env.local` 不存在时使用
+
+**优先级顺序**（从高到低）：`.env.local` > `.env.development/.env.production` > 代码默认值
 
 ---
 
@@ -251,9 +272,47 @@ sudo systemctl reload nginx
 # 1. 在服务器创建目录
 sudo mkdir -p /var/www/lumina
 
-# 2. 上传代码（使用 scp 从本地上传）
-# 在本地 PowerShell 执行：
+# 2. 上传代码到服务器（选择以下方式之一）
+
+#### 方式 A：使用 PowerShell（Windows）
+
+创建或使用 `upload.ps1` 脚本（已预置）：
+
+```powershell
+# 在项目根目录执行此命令
+.\upload.ps1
+```
+
+#### 方式 B：使用 SCP（Windows 或 Mac/Linux）
+
+```bash
 scp -r d:\CODE_WORLD\photo_establish root@114.116.225.151:/var/www/lumina
+```
+
+#### 方式 C：使用 Git Clone（推荐）
+
+先将项目推送到 Git 仓库，然后在服务器执行：
+
+```bash
+cd /var/www
+git clone https://your-repo.git lumina
+cd lumina
+```
+
+#### ⚠️ 上传前清单
+
+**不需要上传的文件/目录**（会自动生成或已在 .gitignore 中排除）：
+- ❌ `node_modules/` - npm 会在服务器重新安装
+- ❌ `dist/` - 构建产物，服务器会重新构建
+- ❌ `.env.local` - 本地开发配置
+- ❌ `.git/` - 仅使用 Git Clone 方式时包含
+
+**必须上传的文件**：
+- ✅ 源代码目录（`backend/src/`, `frontend/src/`）
+- ✅ 配置文件（package.json, tsconfig.json, vite.config.ts）
+- ✅ 环境示例（.env.example）
+- ✅ 部署脚本（deploy.sh, ecosystem.config.js）
+- ✅ 文档文件（DEPLOYMENT.md, README.md）
 
 # 3. 配置文件已自动配置完成（无需手动修改）
 # ✅ frontend/.env.production → http://114.116.225.151

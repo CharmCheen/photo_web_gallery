@@ -11,9 +11,27 @@
 创建生产环境配置文件 `frontend/.env.production`：
 
 ```env
-# 替换为你的服务器域名或 IP
-VITE_API_BASE_URL=https://your-domain.com
+# 替换为你的服务器域名或 IP（本项目使用 IP 地址）
+VITE_API_BASE_URL=http://114.116.225.151
 ```
+
+#### 前端环境文件说明
+
+项目使用三个前端环境配置文件，优先级从高到低：
+
+1. **`.env.local`**（本地覆盖，最高优先级，已添加到 .gitignore）
+   - 当前配置：`VITE_API_BASE_URL=http://114.116.225.151`
+   - 用途：开发或紧急测试覆盖其他配置
+
+2. **`.env.development`**（开发环境，npm run dev 时使用）
+   - 配置：`VITE_API_BASE_URL=http://localhost:4000`
+   - 用途：本地开发时连接本地后端
+
+3. **`.env.production`**（生产环境，npm run build 时使用）
+   - 配置：`VITE_API_BASE_URL=http://114.116.225.151`
+   - 用途：生产构建时连接服务器后端
+
+⚠️ **重要**：如果同时存在 `.env.local`，它会覆盖其他配置文件。如果在 `.env.local` 中设置了生产 IP，则本地开发也会连接到生产服务器。
 
 ### 1.2 修改后端配置
 
@@ -27,6 +45,7 @@ cp backend/.env.example backend/.env
 
 ```env
 PORT=4000
+MONGODB_URI=mongodb://localhost:27017/lumina
 FRONTEND_ORIGIN=http://114.116.225.151
 NODE_ENV=production
 UPLOAD_DIR=/var/www/lumina/uploads
@@ -48,6 +67,7 @@ module.exports = {
     env: {
       NODE_ENV: 'production',
       PORT: 4000,
+       MONGODB_URI: 'mongodb://localhost:27017/lumina',
       FRONTEND_ORIGIN: 'http://114.116.225.151',
       UPLOAD_DIR: '/var/www/lumina/uploads',
       FILE_URL_PREFIX: 'http://114.116.225.151/uploads'
@@ -75,6 +95,26 @@ cd lumina
 # 在本地
 scp -r ./photo_establish root@114.116.225.151:/var/www/lumina
 ```
+
+### 方式 C：使用 PowerShell 脚本（Windows 推荐）
+
+项目包含 `upload.ps1` 脚本，用于从 Windows 快速上传代码：
+
+```powershell
+# 在项目根目录打开 PowerShell，执行：
+.\upload.ps1
+
+# 脚本会自动：
+# 1. 检查 SCP 命令可用性
+# 2. 连接到 114.116.225.151
+# 3. 上传所有项目文件
+# 4. 显示后续步骤说明
+```
+
+**前置要求**：
+- Windows 10 或更高版本
+- 已安装 OpenSSH（内置或通过 Windows 设置安装）
+- 检查方法：在 PowerShell 中运行 `scp` 命令，如果找到则已安装
 
 ---
 

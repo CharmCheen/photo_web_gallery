@@ -14,8 +14,8 @@ interface RegisterPayload {
   name: string;
   email?: string;
   password?: string;
-  phone: string;
-  code: string;
+  phone?: string;
+  code?: string;
 }
 
 interface AuthContextType {

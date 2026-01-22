@@ -24,17 +24,21 @@ const UserSchema = new Schema<IUser>({
   timestamps: true, // 自动添加 createdAt 和 updatedAt
 });
 
-// 短信验证码接口
-export interface ISmsCode extends Document {
-  phone: string;
+// 验证码接口（支持短信和邮箱）
+export interface IVerificationCode extends Document {
+  channel: 'sms' | 'email';
+  phone?: string;
+  email?: string;
   code: string;
   expiresAt: Date;
   createdAt: Date;
 }
 
-// 短信验证码 Schema
-const SmsCodeSchema = new Schema<ISmsCode>({
-  phone: { type: String, required: true, index: true },
+// 验证码 Schema
+const VerificationCodeSchema = new Schema<IVerificationCode>({
+  channel: { type: String, enum: ['sms', 'email'], required: true },
+  phone: { type: String, index: true },
+  email: { type: String, index: true },
   code: { type: String, required: true },
   expiresAt: { type: Date, required: true },
 }, {
@@ -42,7 +46,7 @@ const SmsCodeSchema = new Schema<ISmsCode>({
 });
 
 // 自动删除过期验证码
-SmsCodeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+VerificationCodeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 // 照片接口
 export interface IPhoto extends Document {
@@ -74,5 +78,6 @@ const PhotoSchema = new Schema<IPhoto>({
 
 // 导出模型
 export const UserModel = mongoose.model<IUser>('User', UserSchema);
-export const SmsCodeModel = mongoose.model<ISmsCode>('SmsCode', SmsCodeSchema);
+export const VerificationCodeModel = mongoose.model<IVerificationCode>('VerificationCode', VerificationCodeSchema);
+export const SmsCodeModel = VerificationCodeModel; // 兼容旧命名
 export const PhotoModel = mongoose.model<IPhoto>('Photo', PhotoSchema);

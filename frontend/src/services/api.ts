@@ -41,13 +41,19 @@ export const api = {
         body: JSON.stringify({ phone }),
       });
     },
+    sendEmail: async (email: string): Promise<{ message: string; cooldown: number; code?: string }> => {
+      return requestJson('/api/auth/email/send', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+    },
     login: async (payload: { method: 'password' | 'sms'; email?: string; password?: string; phone?: string; code?: string }): Promise<User> => {
       return requestJson('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
     },
-    register: async (payload: { name: string; email?: string; password?: string; phone: string; code: string }): Promise<User> => {
+    register: async (payload: { name: string; email?: string; password?: string; phone?: string; code?: string }): Promise<User> => {
       return requestJson('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify(payload),
