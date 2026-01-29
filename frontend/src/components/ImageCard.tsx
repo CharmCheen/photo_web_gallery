@@ -1,8 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ImageCardProps } from '../types';
 
 export const ImageCard: React.FC<ImageCardProps> = ({ photo, onClick }) => {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  // 使用缩略图，如果没有则使用原图
+  const displayUrl = photo.thumbnailUrl || photo.url;
+
   return (
     <motion.div
       layoutId={`card-container-${photo.id}`}
@@ -15,12 +19,23 @@ export const ImageCard: React.FC<ImageCardProps> = ({ photo, onClick }) => {
       className="relative group cursor-pointer mb-8 break-inside-avoid px-1"
     >
       <div className="overflow-hidden rounded-2xl bg-[#1c1c1e] shadow-lg hover:shadow-2xl transition-all duration-500 will-change-transform">
+        {/* 骨架屏加载占位 */}
+        {!imageLoaded && (
+          <div 
+            className="w-full bg-gradient-to-br from-[#2c2c2e] to-[#1c1c1e] animate-pulse"
+            style={{ 
+              aspectRatio: `${photo.width} / ${photo.height}`,
+              minHeight: '150px'
+            }}
+          />
+        )}
         <motion.img
           layoutId={`image-${photo.id}`}
-          src={photo.url}
+          src={displayUrl}
           alt={photo.description}
           loading="lazy"
-          className="w-full h-auto object-cover transform will-change-transform" 
+          onLoad={() => setImageLoaded(true)}
+          className={`w-full h-auto object-cover transform will-change-transform transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
           transition={{ duration: 0.5, ease: [0.33, 1, 0.68, 1] }}
         />
         

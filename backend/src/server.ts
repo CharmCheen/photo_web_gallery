@@ -4,8 +4,9 @@ import multer from 'multer';
 import { z } from 'zod';
 import path from 'path';
 import fs from 'fs';
+import sharp from 'sharp';
 import { connectDatabase } from './database.js';
-import { UserModel, VerificationCodeModel, PhotoModel } from './models.js';
+import { UserModel, VerificationCodeModel, PhotoModel, LikeModel } from './models.js';
 import { sendVerificationEmail } from './emailService.js';
 
 const app = express();
@@ -14,17 +15,24 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:3000,ht
   .split(',')
   .map((origin: string) => origin.trim())
   .filter(Boolean);
-const ALLOW_UNVERIFIED_SIGNUP = process.env.ALLOW_UNVERIFIED_SIGNUP !== 'false';
-const CODE_TTL_MS = 5 * 60 * 1000;
-const CODE_COOLDOWN_SECONDS = 60;
+const CODE_TTL_MS = 5 * 60 * 1000; // 验证码有效期5分钟
+const CODE_COOLDOWN_SECONDS = 60; // 发送冷却时间60秒
 
 // 配置文件上传目录
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
+const THUMBNAIL_DIR = path.join(UPLOAD_DIR, 'thumbnails');
 const FILE_URL_PREFIX = process.env.FILE_URL_PREFIX || `http://localhost:${port}/uploads`;
+
+// 缩略图配置
+const THUMBNAIL_WIDTH = 400;
+const THUMBNAIL_QUALITY = 80;
 
 // 确保上传目录存在
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+if (!fs.existsSync(THUMBNAIL_DIR)) {
+  fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
 }
 
 // 连接数据库
@@ -68,32 +76,27 @@ const upload = multer({
 
 const randomCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
-const issueVerificationCode = async (options: { channel: 'sms' | 'email'; phone?: string; email?: string; }) => {
-  const { channel, phone, email } = options;
-  if (channel === 'sms' && !phone) throw new Error('手机号必填');
-  if (channel === 'email' && !email) throw new Error('邮箱必填');
-
+// 发送验证码（仅邮箱）
+const issueVerificationCode = async (email: string, purpose: 'login' | 'register' | 'reset' = 'login') => {
   const code = randomCode();
   const expiresAt = new Date(Date.now() + CODE_TTL_MS);
 
-  const filter = channel === 'sms' ? { channel, phone } : { channel, email };
-  await VerificationCodeModel.deleteMany(filter);
-  await VerificationCodeModel.create({ channel, phone, email, code, expiresAt });
+  // 删除该邮箱的旧验证码
+  await VerificationCodeModel.deleteMany({ email, purpose });
+  await VerificationCodeModel.create({ email, code, purpose, expiresAt });
 
-  if (channel === 'email' && email) {
-    await sendVerificationEmail(email, code);
-  }
+  // 发送邮件
+  await sendVerificationEmail(email, code);
 
   return code;
 };
 
-const verifyCode = async (options: { channel: 'sms' | 'email'; phone?: string; email?: string; code: string; }) => {
-  const { channel, phone, email, code } = options;
-  const filter = channel === 'sms' ? { channel, phone } : { channel, email };
-
-  const record = await VerificationCodeModel.findOne({
-    ...filter,
+// 验证验证码
+const verifyCode = async (email: string, code: string, purpose: 'login' | 'register' | 'reset' = 'login') => {
+  const record = await VerificationCodeModel.findOneAndDelete({
+    email,
     code,
+    purpose,
     expiresAt: { $gt: new Date() },
   });
 
@@ -104,37 +107,40 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
 
-app.post('/api/auth/sms/send', async (req: Request, res: Response) => {
-  const schema = z.object({ phone: z.string().min(6) });
-  const result = schema.safeParse(req.body);
-  if (!result.success) {
-    res.status(400).json({ message: '请输入手机号' });
-    return;
-  }
-
-  try {
-    const code = await issueVerificationCode({ channel: 'sms', phone: result.data.phone });
-
-    res.json({
-      message: '验证码已发送',
-      cooldown: CODE_COOLDOWN_SECONDS,
-      code: process.env.NODE_ENV === 'production' ? undefined : code,
-    });
-  } catch (error) {
-    res.status(500).json({ message: '验证码发送失败' });
-  }
-});
-
-app.post('/api/auth/email/send', async (req: Request, res: Response) => {
-  const schema = z.object({ email: z.string().email() });
+// 发送验证码（登录/注册通用）
+app.post('/api/auth/code/send', async (req: Request, res: Response) => {
+  const schema = z.object({ 
+    email: z.string().email(),
+    purpose: z.enum(['login', 'register', 'reset']).optional()
+  });
   const result = schema.safeParse(req.body);
   if (!result.success) {
     res.status(400).json({ message: '请输入有效邮箱' });
     return;
   }
 
+  const { email, purpose = 'login' } = result.data;
+
   try {
-    const code = await issueVerificationCode({ channel: 'email', email: result.data.email });
+    // 注册时检查邮箱是否已存在
+    if (purpose === 'register') {
+      const existingUser = await UserModel.findOne({ email });
+      if (existingUser) {
+        res.status(400).json({ message: '该邮箱已注册，请直接登录' });
+        return;
+      }
+    }
+
+    // 登录时检查用户是否存在
+    if (purpose === 'login') {
+      const existingUser = await UserModel.findOne({ email });
+      if (!existingUser) {
+        res.status(404).json({ message: '该邮箱尚未注册' });
+        return;
+      }
+    }
+
+    const code = await issueVerificationCode(email, purpose);
 
     res.json({
       message: '验证码已发送至邮箱',
@@ -142,148 +148,94 @@ app.post('/api/auth/email/send', async (req: Request, res: Response) => {
       code: process.env.NODE_ENV === 'production' ? undefined : code,
     });
   } catch (error) {
-    res.status(500).json({ message: '验证码发送失败' });
+    console.error('发送验证码失败:', error);
+    res.status(500).json({ message: '验证码发送失败，请稍后重试' });
   }
 });
 
+// 登录（邮箱+验证码）
 app.post('/api/auth/login', async (req: Request, res: Response) => {
   const schema = z.object({
-    method: z.enum(['password', 'sms']),
-    email: z.string().email().optional(),
-    password: z.string().min(6).optional(),
-    phone: z.string().min(6).optional(),
-    code: z.string().length(6).optional(),
+    email: z.string().email(),
+    code: z.string().length(6),
   });
 
   const result = schema.safeParse(req.body);
   if (!result.success) {
-    res.status(400).json({ message: '请求参数不正确' });
+    res.status(400).json({ message: '请输入邮箱和验证码' });
     return;
   }
 
-  const payload = result.data;
-  let user;
+  const { email, code } = result.data;
 
-  if (payload.method === 'password') {
-    if (!payload.email || !payload.password) {
-      res.status(400).json({ message: '请输入邮箱和密码' });
-      return;
-    }
-    
-    // 查找用户（简化版，实际需要密码加密）
-    user = await UserModel.findOne({ email: payload.email });
-    if (!user) {
-      res.status(401).json({ message: '用户名或密码错误' });
-      return;
-    }
-  } else {
-    if (!payload.phone || !payload.code) {
-      res.status(400).json({ message: '请输入手机号和验证码' });
-      return;
-    }
+  // 验证验证码
+  const isValid = await verifyCode(email, code, 'login');
+  if (!isValid) {
+    res.status(401).json({ message: '验证码错误或已过期' });
+    return;
+  }
 
-    const isValid = await verifyCode({ channel: 'sms', phone: payload.phone, code: payload.code });
+  // 查找用户
+  const user = await UserModel.findOne({ email });
+  if (!user) {
+    res.status(404).json({ message: '用户不存在，请先注册' });
+    return;
+  }
 
-    if (!isValid) {
-      res.status(401).json({ message: '验证码错误或已过期' });
-      return;
-    }
-    
-    // 查找或创建用户
-    user = await UserModel.findOne({ phone: payload.phone });
-    if (!user) {
-      res.status(404).json({ message: '用户不存在，请先注册' });
-      return;
-    }
+  // 更新邮箱验证状态
+  if (!user.emailVerified) {
+    user.emailVerified = true;
+    await user.save();
   }
 
   res.json({
     id: user._id.toString(),
     name: user.name,
     email: user.email,
-    phone: user.phone,
     avatar: user.avatar,
     bio: user.bio,
   });
 });
 
+// 注册（邮箱+验证码+名字）
 app.post('/api/auth/register', async (req: Request, res: Response) => {
   const schema = z.object({
-    name: z.string().min(1),
-    phone: z.string().min(6).optional(),
-    email: z.string().email().optional(),
-    code: z.string().length(6).optional(),
-    password: z.string().min(6).optional(),
+    name: z.string().min(1, '请输入名字').max(50, '名字过长'),
+    email: z.string().email('请输入有效邮箱'),
+    code: z.string().length(6, '验证码为6位数字'),
+    password: z.string().min(6, '密码至少6位').optional(),
   });
 
   const result = schema.safeParse(req.body);
   if (!result.success) {
-    res.status(400).json({ message: '请填写必要信息' });
+    const firstError = result.error.errors[0]?.message || '请填写必要信息';
+    res.status(400).json({ message: firstError });
     return;
   }
 
-  const { name, phone, email, code, password } = result.data;
-  const wantsPhone = Boolean(phone);
-  const wantsEmail = Boolean(email);
+  const { name, email, code, password } = result.data;
 
-  if (wantsPhone && wantsEmail) {
-    res.status(400).json({ message: '请选择绑定手机号或邮箱中的一种' });
+  // 检查邮箱是否已注册
+  const existingUser = await UserModel.findOne({ email });
+  if (existingUser) {
+    res.status(400).json({ message: '该邮箱已注册' });
     return;
   }
 
-  if (!wantsPhone && !wantsEmail && !ALLOW_UNVERIFIED_SIGNUP) {
-    res.status(400).json({ message: '请提供手机号或邮箱完成验证' });
+  // 验证验证码
+  const isValid = await verifyCode(email, code, 'register');
+  if (!isValid) {
+    res.status(401).json({ message: '验证码错误或已过期' });
     return;
   }
 
-  if (wantsPhone && !code) {
-    res.status(400).json({ message: '请输入手机验证码' });
-    return;
-  }
-
-  if (wantsEmail && !code) {
-    res.status(400).json({ message: '请输入邮箱验证码' });
-    return;
-  }
-
-  if (wantsPhone && code) {
-    const phoneValid = await verifyCode({ channel: 'sms', phone, code });
-    if (!phoneValid) {
-      res.status(401).json({ message: '手机验证码错误或已过期' });
-      return;
-    }
-  }
-
-  if (wantsEmail && code) {
-    const emailValid = await verifyCode({ channel: 'email', email, code });
-    if (!emailValid) {
-      res.status(401).json({ message: '邮箱验证码错误或已过期' });
-      return;
-    }
-  }
-
-  if (wantsPhone) {
-    const existingPhoneUser = await UserModel.findOne({ phone });
-    if (existingPhoneUser) {
-      res.status(400).json({ message: '该手机号已注册' });
-      return;
-    }
-  }
-
-  if (wantsEmail) {
-    const existingEmailUser = await UserModel.findOne({ email });
-    if (existingEmailUser) {
-      res.status(400).json({ message: '该邮箱已注册' });
-      return;
-    }
-  }
-
+  // 创建用户
   const user = await UserModel.create({
     name,
     email,
-    phone,
-    password, // 实际应该加密
-    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
+    password, // 实际应用中应该加密
+    emailVerified: true,
+    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`,
     bio: '新晋视觉创作者。',
   });
 
@@ -291,7 +243,6 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     id: user._id.toString(),
     name: user.name,
     email: user.email,
-    phone: user.phone,
     avatar: user.avatar,
     bio: user.bio,
   });
@@ -302,24 +253,59 @@ app.post('/api/auth/logout', (_req: Request, res: Response) => {
 });
 
 app.get('/api/photos', async (req: Request, res: Response) => {
-  const page = Number(req.query.page || 1);
-  const limit = Number(req.query.limit || 24);
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 24));
+  const authorId = req.query.authorId as string | undefined;
+  const tag = req.query.tag as string | undefined;
+  const search = req.query.search as string | undefined;
+
+  // 构建查询条件
+  const query: any = {};
+  if (authorId) {
+    query.authorId = authorId;
+  }
+  if (tag) {
+    query.tags = tag;
+  }
+  if (search) {
+    query.$or = [
+      { description: { $regex: search, $options: 'i' } },
+      { tags: { $regex: search, $options: 'i' } },
+      { author: { $regex: search, $options: 'i' } },
+    ];
+  }
+
+  const [photos, total] = await Promise.all([
+    PhotoModel.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit),
+    PhotoModel.countDocuments(query),
+  ]);
+
+  const hasMore = page * limit < total;
   
-  const photos = await PhotoModel.find()
-    .sort({ createdAt: -1 })
-    .skip((page - 1) * limit)
-    .limit(limit);
-  
-  res.json(photos.map(photo => ({
-    id: photo._id.toString(),
-    url: photo.url,
-    width: photo.width,
-    height: photo.height,
-    author: photo.author,
-    likes: photo.likes,
-    description: photo.description,
-    tags: photo.tags,
-  })));
+  res.json({
+    photos: photos.map(photo => ({
+      id: photo._id.toString(),
+      url: photo.url,
+      thumbnailUrl: photo.thumbnailUrl || photo.url, // 兼容旧数据
+      width: photo.width,
+      height: photo.height,
+      author: photo.author,
+      authorId: photo.authorId,
+      likes: photo.likes,
+      description: photo.description,
+      tags: photo.tags,
+    })),
+    pagination: {
+      page,
+      limit,
+      total,
+      hasMore,
+      totalPages: Math.ceil(total / limit),
+    },
+  });
 });
 
 app.post('/api/photos/upload', upload.single('file'), async (req: Request, res: Response) => {
@@ -342,39 +328,72 @@ app.post('/api/photos/upload', upload.single('file'), async (req: Request, res: 
   }
 
   const { description, tags, authorId } = result.data;
-  const fileUrl = `${FILE_URL_PREFIX}/${req.file.filename}`;
   
-  // 获取作者信息
-  let authorName = '匿名用户';
-  if (authorId) {
-    const user = await UserModel.findById(authorId);
-    if (user) {
-      authorName = user.name;
-    }
-  }
-  
-  // 保存到数据库
-  const photo = await PhotoModel.create({
-    url: fileUrl,
-    width: 1200,
-    height: 900,
-    author: authorName,
-    authorId: authorId || undefined,
-    likes: 0,
-    description: description || '未命名作品',
-    tags: tags ? tags.split(/[,，]/).map((t: string) => t.trim()).filter(Boolean) : ['精选'],
-  });
+  try {
+    // 读取图片元数据获取真实尺寸
+    const imagePath = req.file.path;
+    const metadata = await sharp(imagePath).metadata();
+    const width = metadata.width || 1200;
+    const height = metadata.height || 900;
 
-  res.json({
-    id: photo._id.toString(),
-    url: photo.url,
-    width: photo.width,
-    height: photo.height,
-    author: photo.author,
-    likes: photo.likes,
-    description: photo.description,
-    tags: photo.tags,
-  });
+    // 生成缩略图文件名
+    const thumbnailFilename = `thumb-${req.file.filename}`;
+    const thumbnailPath = path.join(THUMBNAIL_DIR, thumbnailFilename);
+
+    // 生成缩略图（保持比例，宽度最大400px）
+    await sharp(imagePath)
+      .resize(THUMBNAIL_WIDTH, null, {
+        withoutEnlargement: true,
+        fit: 'inside',
+      })
+      .jpeg({ quality: THUMBNAIL_QUALITY })
+      .toFile(thumbnailPath);
+
+    const fileUrl = `${FILE_URL_PREFIX}/${req.file.filename}`;
+    const thumbnailUrl = `${FILE_URL_PREFIX}/thumbnails/${thumbnailFilename}`;
+    
+    // 获取作者信息
+    let authorName = '匿名用户';
+    if (authorId) {
+      const user = await UserModel.findById(authorId);
+      if (user) {
+        authorName = user.name;
+      }
+    }
+    
+    // 保存到数据库
+    const photo = await PhotoModel.create({
+      url: fileUrl,
+      thumbnailUrl: thumbnailUrl,
+      width,
+      height,
+      author: authorName,
+      authorId: authorId || undefined,
+      likes: 0,
+      description: description || '未命名作品',
+      tags: tags ? tags.split(/[,，]/).map((t: string) => t.trim()).filter(Boolean) : ['精选'],
+    });
+
+    res.json({
+      id: photo._id.toString(),
+      url: photo.url,
+      thumbnailUrl: photo.thumbnailUrl,
+      width: photo.width,
+      height: photo.height,
+      author: photo.author,
+      authorId: photo.authorId,
+      likes: photo.likes,
+      description: photo.description,
+      tags: photo.tags,
+    });
+  } catch (error) {
+    console.error('图片处理失败:', error);
+    // 清理已上传的文件
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ message: '图片处理失败，请重试' });
+  }
 });
 
 app.get('/api/user/:id', async (req: Request, res: Response) => {
@@ -394,21 +413,137 @@ app.get('/api/user/:id', async (req: Request, res: Response) => {
   });
 });
 
-// 点赞照片
+// 点赞/取消点赞照片
 app.post('/api/photos/:id/like', async (req: Request, res: Response) => {
+  const schema = z.object({
+    userId: z.string(),
+  });
+
+  const result = schema.safeParse(req.body);
+  if (!result.success) {
+    res.status(400).json({ message: '请先登录' });
+    return;
+  }
+
+  const { userId } = result.data;
+  const photoId = req.params.id;
+
+  try {
+    const photo = await PhotoModel.findById(photoId);
+    if (!photo) {
+      res.status(404).json({ message: '照片不存在' });
+      return;
+    }
+
+    // 检查是否已点赞
+    const existingLike = await LikeModel.findOne({ userId, photoId });
+
+    if (existingLike) {
+      // 取消点赞
+      await LikeModel.deleteOne({ userId, photoId });
+      photo.likes = Math.max(0, photo.likes - 1);
+      await photo.save();
+      res.json({ likes: photo.likes, liked: false });
+    } else {
+      // 添加点赞
+      await LikeModel.create({ userId, photoId });
+      photo.likes += 1;
+      await photo.save();
+      res.json({ likes: photo.likes, liked: true });
+    }
+  } catch (error) {
+    console.error('点赞操作失败:', error);
+    res.status(500).json({ message: '操作失败' });
+  }
+});
+
+// 检查用户对某些照片的点赞状态
+app.get('/api/photos/likes', async (req: Request, res: Response) => {
+  const userId = req.query.userId as string;
+  const photoIds = (req.query.photoIds as string)?.split(',').filter(Boolean);
+
+  if (!userId || !photoIds?.length) {
+    res.json({ likes: {} });
+    return;
+  }
+
+  try {
+    const likes = await LikeModel.find({ userId, photoId: { $in: photoIds } });
+    const likeMap: Record<string, boolean> = {};
+    photoIds.forEach((id: string) => { likeMap[id] = false; });
+    likes.forEach((like: { photoId: string }) => { likeMap[like.photoId] = true; });
+    res.json({ likes: likeMap });
+  } catch (error) {
+    res.status(500).json({ message: '查询失败' });
+  }
+});
+
+// 获取热门标签
+app.get('/api/tags/popular', async (_req: Request, res: Response) => {
+  try {
+    const result = await PhotoModel.aggregate([
+      { $unwind: '$tags' },
+      { $group: { _id: '$tags', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 20 },
+    ]);
+    res.json({
+      tags: result.map((item: { _id: string; count: number }) => ({ name: item._id, count: item.count })),
+    });
+  } catch (error) {
+    res.status(500).json({ message: '获取标签失败' });
+  }
+});
+
+// 删除照片
+app.delete('/api/photos/:id', async (req: Request, res: Response) => {
+  const { authorId } = req.query;
+
+  if (!authorId) {
+    res.status(401).json({ message: '请先登录' });
+    return;
+  }
+
   try {
     const photo = await PhotoModel.findById(req.params.id);
     if (!photo) {
       res.status(404).json({ message: '照片不存在' });
       return;
     }
-    
-    photo.likes += 1;
-    await photo.save();
-    
-    res.json({ likes: photo.likes });
+
+    // 验证是否为作者本人
+    if (photo.authorId !== authorId) {
+      res.status(403).json({ message: '只能删除自己上传的照片' });
+      return;
+    }
+
+    // 删除原图文件
+    const filename = photo.url.split('/').pop();
+    if (filename) {
+      const filePath = path.join(UPLOAD_DIR, filename);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+
+    // 删除缩略图文件
+    if (photo.thumbnailUrl) {
+      const thumbFilename = photo.thumbnailUrl.split('/').pop();
+      if (thumbFilename) {
+        const thumbPath = path.join(THUMBNAIL_DIR, thumbFilename);
+        if (fs.existsSync(thumbPath)) {
+          fs.unlinkSync(thumbPath);
+        }
+      }
+    }
+
+    // 从数据库删除
+    await PhotoModel.findByIdAndDelete(req.params.id);
+
+    res.json({ message: '删除成功' });
   } catch (error) {
-    res.status(500).json({ message: '点赞失败' });
+    console.error('删除照片失败:', error);
+    res.status(500).json({ message: '删除失败' });
   }
 });
 

@@ -1,22 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { motion, useScroll } from 'framer-motion';
 import { NavbarProps } from '../types';
+import { SearchBar } from './SearchBar';
 
 export const Navbar: React.FC<NavbarProps> = ({ 
   user, 
   onUploadClick, 
   onLoginClick, 
   onLogoutClick,
-  onDiscoverClick
+  onDiscoverClick,
+  onSearch,
+  onTagSelect
 }) => {
   const { scrollY } = useScroll();
   const [isScrolled, setIsScrolled] = useState(false);
+  const [selectedTag, setSelectedTag] = useState('');
 
   useEffect(() => {
     return scrollY.onChange((latest) => {
       setIsScrolled(latest > 20);
     });
   }, [scrollY]);
+
+  const handleTagSelect = (tag: string) => {
+    setSelectedTag(tag);
+    onTagSelect?.(tag);
+  };
 
   return (
     <motion.nav 
@@ -38,13 +47,19 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 探索
               </button>
-              {/* <button className="text-sm font-medium text-secondary hover:text-white transition-colors tracking-wide">
-                精选集
-              </button> */}
            </div>
         </div>
 
-        <div className="flex items-center space-x-6">
+        <div className="flex items-center space-x-4 md:space-x-6">
+           {/* 搜索框 */}
+           {onSearch && onTagSelect && (
+             <SearchBar 
+               onSearch={onSearch} 
+               onTagSelect={handleTagSelect}
+               selectedTag={selectedTag}
+             />
+           )}
+
            {user ? (
              <>
                 <button 

@@ -50,6 +50,16 @@ FRONTEND_ORIGIN=http://114.116.225.151
 NODE_ENV=production
 UPLOAD_DIR=/var/www/lumina/uploads
 FILE_URL_PREFIX=http://114.116.225.151/uploads
+
+# 邮件服务配置（必填，用于发送验证码）
+MAIL_HOST=smtp.qq.com
+MAIL_PORT=587
+MAIL_SECURE=false
+MAIL_USER=your-email@qq.com
+MAIL_PASS=your-smtp-authorization-code
+MAIL_FROM_ADDRESS=your-email@qq.com
+MAIL_FROM_NAME=Lumina
+MAIL_BRAND_NAME=Lumina
 ```
 
 或使用 PM2 配置文件 `backend/ecosystem.config.js`（已创建）：
@@ -67,10 +77,19 @@ module.exports = {
     env: {
       NODE_ENV: 'production',
       PORT: 4000,
-       MONGODB_URI: 'mongodb://localhost:27017/lumina',
+      MONGODB_URI: 'mongodb://localhost:27017/lumina',
       FRONTEND_ORIGIN: 'http://114.116.225.151',
       UPLOAD_DIR: '/var/www/lumina/uploads',
-      FILE_URL_PREFIX: 'http://114.116.225.151/uploads'
+      FILE_URL_PREFIX: 'http://114.116.225.151/uploads',
+      // 邮件服务配置
+      MAIL_HOST: 'smtp.qq.com',
+      MAIL_PORT: '587',
+      MAIL_SECURE: 'false',
+      MAIL_USER: 'your-email@qq.com',
+      MAIL_PASS: 'your-smtp-authorization-code',
+      MAIL_FROM_ADDRESS: 'your-email@qq.com',
+      MAIL_FROM_NAME: 'Lumina',
+      MAIL_BRAND_NAME: 'Lumina'
     }
   }]
 };
@@ -404,10 +423,33 @@ sudo tail -f /var/log/mongodb/mongod.log
 |---|---|---|
 | PORT | 4000 | 后端监听端口 |
 | FRONTEND_ORIGIN | http://114.116.225.151 | 允许的前端域名（多个用逗号分隔） |
-| NODE_ENV | production | 生产环境（不返回短信验证码明文） |
+| NODE_ENV | production | 生产环境（不返回验证码明文） |
 | MONGODB_URI | mongodb://localhost:27017/lumina | MongoDB 连接字符串 |
 | UPLOAD_DIR | /var/www/lumina/uploads | 文件上传存储目录 |
 | FILE_URL_PREFIX | http://114.116.225.151/uploads | 文件访问 URL 前缀 |
+
+### 10.3 邮件服务配置（必填）
+
+| 变量名 | 示例 | 说明 |
+|---|---|---|
+| MAIL_HOST | smtp.qq.com | SMTP 服务器地址 |
+| MAIL_PORT | 587 | SMTP 端口（SSL 使用 465） |
+| MAIL_SECURE | false | 是否使用 SSL（465 端口设为 true） |
+| MAIL_USER | your-email@qq.com | 发件邮箱账号 |
+| MAIL_PASS | authorization-code | 邮箱密码或授权码 |
+| MAIL_FROM_ADDRESS | your-email@qq.com | 发件人邮箱地址 |
+| MAIL_FROM_NAME | Lumina | 发件人显示名称 |
+| MAIL_BRAND_NAME | Lumina | 邮件中显示的品牌名 |
+
+**常用 SMTP 配置：**
+
+| 邮箱服务商 | SMTP 地址 | 端口 | 备注 |
+|---|---|---|---|
+| QQ邮箱 | smtp.qq.com | 587 或 465(SSL) | 需要开启 SMTP 并获取授权码 |
+| 163邮箱 | smtp.163.com | 25 或 465(SSL) | 需要开启 SMTP 并获取授权码 |
+| Gmail | smtp.gmail.com | 587 或 465(SSL) | 需要开启两步验证并创建应用密码 |
+| Outlook | smtp.office365.com | 587 | 使用账号密码 |
+| 阿里企业邮箱 | smtp.mxhichina.com | 465(SSL) | 使用账号密码 |
 
 ---
 
@@ -418,7 +460,7 @@ sudo tail -f /var/log/mongodb/mongod.log
 - **用户信息**：MongoDB 数据库 `lumina.users` 集合
 - **照片元数据**：MongoDB 数据库 `lumina.photos` 集合
 - **照片文件**：本地磁盘 `/var/www/lumina/uploads/`
-- **短信验证码**：MongoDB 数据库 `lumina.smscodes` 集合（5分钟自动过期）
+- **邮箱验证码**：MongoDB 数据库 `lumina.verificationcodes` 集合（5分钟自动过期）
 
 ### 11.2 数据备份
 

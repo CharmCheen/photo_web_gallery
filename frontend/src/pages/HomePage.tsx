@@ -1,38 +1,111 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Gallery } from '../components/Gallery';
 import { Photo } from '../types';
 import { api } from '../services/api';
 import { motion, useScroll, useTransform } from 'framer-motion';
+import { Search, X } from 'lucide-react';
 
 interface HomePageProps {
   onPhotoSelect: (photo: Photo) => void;
   refreshKey?: number;
   onError?: (message: string) => void;
+  searchQuery?: string;
+  selectedTag?: string;
 }
 
-export const HomePage: React.FC<HomePageProps> = ({ onPhotoSelect, refreshKey, onError }) => {
+export const HomePage: React.FC<HomePageProps> = ({ 
+  onPhotoSelect, 
+  refreshKey, 
+  onError,
+  searchQuery = '',
+  selectedTag = ''
+}) => {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const prevFiltersRef = useRef({ searchQuery: '', selectedTag: '' });
+
   const { scrollY } = useScroll();
   const y = useTransform(scrollY, [0, 500], [0, 200]);
   const opacity = useTransform(scrollY, [0, 300], [1, 0]);
 
+  // 加载照片
+  const fetchPhotos = useCallback(async (pageNum: number, reset = false) => {
+    try {
+      if (pageNum === 1) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
+
+      const response = await api.photos.list({ 
+        page: pageNum, 
+        limit: 24,
+        search: searchQuery || undefined,
+        tag: selectedTag || undefined,
+      });
+      
+      if (reset) {
+        setPhotos(response.photos);
+      } else {
+        setPhotos(prev => [...prev, ...response.photos]);
+      }
+      
+      setHasMore(response.pagination.hasMore);
+      setPage(pageNum);
+    } catch (err) {
+      console.error("Failed to fetch photos", err);
+      const message = err instanceof Error ? err.message : '加载失败，请稍后重试';
+      onError?.(message);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [onError, searchQuery, selectedTag]);
+
+  // 初始加载和筛选条件变化时重新加载
   useEffect(() => {
-    const fetchPhotos = async () => {
-      try {
-        const data = await api.photos.list();
-        setPhotos(data);
-      } catch (err) {
-        console.error("Failed to fetch photos", err);
-        const message = err instanceof Error ? err.message : '加载失败，请稍后重试';
-        onError?.(message);
-      } finally {
-        setLoading(false);
+    const filtersChanged = 
+      prevFiltersRef.current.searchQuery !== searchQuery ||
+      prevFiltersRef.current.selectedTag !== selectedTag;
+    
+    prevFiltersRef.current = { searchQuery, selectedTag };
+    
+    setPage(1);
+    setHasMore(true);
+    fetchPhotos(1, true);
+  }, [refreshKey, searchQuery, selectedTag, fetchPhotos]);
+
+  // 无限滚动 - Intersection Observer
+  useEffect(() => {
+    if (loading) return;
+
+    const handleObserver = (entries: IntersectionObserverEntry[]) => {
+      const [entry] = entries;
+      if (entry.isIntersecting && hasMore && !loadingMore) {
+        fetchPhotos(page + 1);
       }
     };
 
-    fetchPhotos();
-  }, [refreshKey, onError]);
+    observerRef.current = new IntersectionObserver(handleObserver, {
+      rootMargin: '200px',
+      threshold: 0,
+    });
+
+    if (loadMoreRef.current) {
+      observerRef.current.observe(loadMoreRef.current);
+    }
+
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [loading, hasMore, loadingMore, page, fetchPhotos]);
 
   return (
     <div className="pb-20">
@@ -63,12 +136,47 @@ export const HomePage: React.FC<HomePageProps> = ({ onPhotoSelect, refreshKey, o
       </section>
 
       <div className="px-4 md:px-8 max-w-[1920px] mx-auto min-h-screen">
+        {/* 搜索结果提示 */}
+        {(searchQuery || selectedTag) && !loading && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 flex items-center gap-2 text-white/60"
+          >
+            <Search className="w-4 h-4" />
+            <span className="text-sm">
+              {searchQuery && selectedTag 
+                ? `搜索 "${searchQuery}" 并筛选标签 "${selectedTag}"`
+                : searchQuery 
+                  ? `搜索 "${searchQuery}"`
+                  : `筛选标签 "${selectedTag}"`
+              }
+              {photos.length > 0 ? ` - 找到 ${photos.length} 张照片` : ' - 暂无结果'}
+            </span>
+          </motion.div>
+        )}
+
         {loading ? (
           <div className="flex justify-center items-center h-40">
             <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
           </div>
         ) : (
-          <Gallery photos={photos} onSelect={onPhotoSelect} />
+          <>
+            <Gallery photos={photos} onSelect={onPhotoSelect} />
+            
+            {/* 加载更多触发器 */}
+            <div ref={loadMoreRef} className="h-20 flex justify-center items-center">
+              {loadingMore && (
+                <div className="flex items-center gap-3 text-secondary">
+                  <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                  <span className="text-sm">加载更多...</span>
+                </div>
+              )}
+              {!hasMore && photos.length > 0 && (
+                <p className="text-secondary/50 text-sm">已加载全部 {photos.length} 张照片</p>
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>

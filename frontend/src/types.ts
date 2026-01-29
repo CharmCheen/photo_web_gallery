@@ -1,21 +1,33 @@
 export interface User {
   id: string;
   name: string;
-  email?: string;
-  phone?: string;
+  email: string;
   avatar?: string;
-  bio?: string; // Added bio
+  bio?: string;
 }
 
 export interface Photo {
   id: string;
   url: string;
+  thumbnailUrl?: string;
   width: number;
   height: number;
   author: string;
+  authorId?: string;
   likes: number;
   description: string;
-  tags: string[]; // Changed to required as we mocked it always present
+  tags: string[];
+}
+
+export interface PhotosResponse {
+  photos: Photo[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
+    totalPages: number;
+  };
 }
 
 export interface Artist {
@@ -72,4 +84,24 @@ export interface NavbarProps {
   onRegisterClick: () => void;
   onLogoutClick: () => void;
   onDiscoverClick: () => void;
+  onSearch?: (query: string) => void;
+  onTagSelect?: (tag: string) => void;
+}
+
+export interface Tag {
+  name: string;
+  count: number;
+}
+
+export interface TagsResponse {
+  tags: Tag[];
+}
+
+export interface LikesResponse {
+  likes: Record<string, boolean>;
+}
+
+export interface LikeResult {
+  likes: number;
+  liked: boolean;
 }

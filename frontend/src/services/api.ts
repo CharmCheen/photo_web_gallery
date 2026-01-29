@@ -1,4 +1,4 @@
-import { Photo, User } from '../types';
+import { Photo, PhotosResponse, User, TagsResponse, LikesResponse, LikeResult } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
@@ -33,27 +33,29 @@ const requestForm = async <T>(path: string, formData: FormData): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
+export interface PhotoListParams {
+  page?: number;
+  limit?: number;
+  authorId?: string;
+  tag?: string;
+  search?: string;
+}
+
 export const api = {
   auth: {
-    sendSms: async (phone: string): Promise<{ message: string; cooldown: number; code?: string }> => {
-      return requestJson('/api/auth/sms/send', {
+    sendCode: async (email: string, purpose: 'login' | 'register' | 'reset' = 'login'): Promise<{ message: string; cooldown: number; code?: string }> => {
+      return requestJson('/api/auth/code/send', {
         method: 'POST',
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ email, purpose }),
       });
     },
-    sendEmail: async (email: string): Promise<{ message: string; cooldown: number; code?: string }> => {
-      return requestJson('/api/auth/email/send', {
-        method: 'POST',
-        body: JSON.stringify({ email }),
-      });
-    },
-    login: async (payload: { method: 'password' | 'sms'; email?: string; password?: string; phone?: string; code?: string }): Promise<User> => {
+    login: async (payload: { email: string; code: string }): Promise<User> => {
       return requestJson('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
     },
-    register: async (payload: { name: string; email?: string; password?: string; phone?: string; code?: string }): Promise<User> => {
+    register: async (payload: { name: string; email: string; code: string; password?: string }): Promise<User> => {
       return requestJson('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -64,17 +66,36 @@ export const api = {
     },
   },
   photos: {
-    list: async (page = 1, limit = 24): Promise<Photo[]> => {
+    list: async (params: PhotoListParams = {}): Promise<PhotosResponse> => {
+      const { page = 1, limit = 24, authorId, tag, search } = params;
       const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (authorId) query.set('authorId', authorId);
+      if (tag) query.set('tag', tag);
+      if (search) query.set('search', search);
       return requestJson(`/api/photos?${query.toString()}`);
     },
     upload: async (payload: FormData): Promise<Photo> => {
       return requestForm('/api/photos/upload', payload);
     },
-    like: async (id: string): Promise<{ likes: number }> => {
+    like: async (id: string, userId: string): Promise<LikeResult> => {
       return requestJson(`/api/photos/${id}/like`, {
         method: 'POST',
+        body: JSON.stringify({ userId }),
       });
+    },
+    checkLikes: async (userId: string, photoIds: string[]): Promise<LikesResponse> => {
+      if (!userId || !photoIds.length) return { likes: {} };
+      return requestJson(`/api/photos/likes?userId=${userId}&photoIds=${photoIds.join(',')}`);
+    },
+    delete: async (id: string, authorId: string): Promise<{ message: string }> => {
+      return requestJson(`/api/photos/${id}?authorId=${authorId}`, {
+        method: 'DELETE',
+      });
+    },
+  },
+  tags: {
+    popular: async (): Promise<TagsResponse> => {
+      return requestJson('/api/tags/popular');
     },
   },
   user: {

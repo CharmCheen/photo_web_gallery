@@ -22,10 +22,22 @@ const AppContent: React.FC = () => {
     mode: 'login' 
   });
   const [toast, setToast] = useState<{ msg: string, id: number } | null>(null);
+  
+  // 搜索和筛选状态
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTag, setSelectedTag] = useState('');
 
   const showToast = (msg: string) => {
     setToast({ msg, id: Date.now() });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+  };
+
+  const handleTagSelect = (tag: string) => {
+    setSelectedTag(tag);
   };
 
   return (
@@ -33,11 +45,21 @@ const AppContent: React.FC = () => {
       onUploadClick={() => setIsUploadOpen(true)}
       onDiscoverClick={() => setIsDiscoverOpen(true)}
       onAuthClick={() => setAuthModal({ isOpen: true, mode: 'login' })}
+      onSearch={handleSearch}
+      onTagSelect={handleTagSelect}
     >
       <Routes>
         <Route
           path="/"
-          element={<HomePage onPhotoSelect={setSelectedPhoto} refreshKey={refreshKey} onError={showToast} />}
+          element={
+            <HomePage 
+              onPhotoSelect={setSelectedPhoto} 
+              refreshKey={refreshKey} 
+              onError={showToast}
+              searchQuery={searchQuery}
+              selectedTag={selectedTag}
+            />
+          }
         />
       </Routes>
 
@@ -48,6 +70,10 @@ const AppContent: React.FC = () => {
             photo={selectedPhoto} 
             onClose={() => setSelectedPhoto(null)} 
             onDownload={(photo) => showToast('正在下载 4K 原图...')}
+            onDelete={(photoId) => {
+              showToast('照片已删除');
+              setRefreshKey((prev) => prev + 1);
+            }}
           />
         )}
       </AnimatePresence>

@@ -1,29 +1,69 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Photo } from '../types';
 import { api } from '../services/api';
-import { Download, X, Heart, Share2 } from 'lucide-react'; 
+import { Download, X, Heart, Share2, Trash2, Loader2 } from 'lucide-react'; 
+import { useAuth } from '../context/AuthContext';
 
 interface LightboxProps {
   photo: Photo;
   onClose: () => void;
   onDownload: (photo: Photo) => void;
+  onDelete?: (photoId: string) => void;
 }
 
-export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload }) => {
+export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload, onDelete }) => {
+  const { user } = useAuth();
   const [currentPhoto, setCurrentPhoto] = useState(photo);
   const [isLiking, setIsLiking] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // 判断是否是作者本人
+  const isOwner = user && currentPhoto.authorId === user.id;
+
+  // 检查用户是否已点赞
+  useEffect(() => {
+    if (!user) return;
+    const checkLikeStatus = async () => {
+      try {
+        const result = await api.photos.checkLikes(user.id, [currentPhoto.id]);
+        setIsLiked(result.likes[currentPhoto.id] || false);
+      } catch (error) {
+        console.error('获取点赞状态失败:', error);
+      }
+    };
+    checkLikeStatus();
+  }, [user, currentPhoto.id]);
 
   const handleLike = async () => {
-    if (isLiking) return;
+    if (isLiking || !user) return;
     setIsLiking(true);
     try {
-      const result = await api.photos.like(currentPhoto.id);
+      const result = await api.photos.like(currentPhoto.id, user.id);
       setCurrentPhoto(prev => ({ ...prev, likes: result.likes }));
+      setIsLiked(result.liked);
     } catch (error) {
       console.error('点赞失败:', error);
     } finally {
       setIsLiking(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!user || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await api.photos.delete(currentPhoto.id, user.id);
+      onDelete?.(currentPhoto.id);
+      onClose();
+    } catch (error) {
+      console.error('删除失败:', error);
+      alert(error instanceof Error ? error.message : '删除失败');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -165,10 +205,15 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload }
              <div className="flex space-x-3">
                  <button 
                     onClick={handleLike}
-                    disabled={isLiking}
-                    className="flex-1 bg-white/5 text-white/90 py-4 rounded-2xl font-medium hover:bg-white/10 transition-all flex items-center justify-center space-x-2 border border-white/5 disabled:opacity-50"
+                    disabled={isLiking || !user}
+                    title={!user ? '请先登录' : isLiked ? '取消点赞' : '点赞'}
+                    className={`flex-1 py-4 rounded-2xl font-medium transition-all flex items-center justify-center space-x-2 border disabled:opacity-50 ${
+                      isLiked 
+                        ? 'bg-pink-500/20 text-pink-400 border-pink-500/30 hover:bg-pink-500/30' 
+                        : 'bg-white/5 text-white/90 border-white/5 hover:bg-white/10'
+                    }`}
                  >
-                    <Heart size={18} className={isLiking ? 'animate-pulse' : ''} />
+                    <Heart size={18} className={`${isLiking ? 'animate-pulse' : ''} ${isLiked ? 'fill-current' : ''}`} />
                     <span>{currentPhoto.likes}</span>
                  </button>
                  <button 
@@ -177,7 +222,42 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload }
                  >
                     <Share2 size={18} />
                  </button>
+                 {isOwner && (
+                   <button 
+                      onClick={() => setShowDeleteConfirm(true)}
+                      disabled={isDeleting}
+                      className="flex-1 bg-red-500/10 text-red-400 py-4 rounded-2xl font-medium hover:bg-red-500/20 transition-all flex items-center justify-center border border-red-500/20 disabled:opacity-50"
+                   >
+                      {isDeleting ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
+                   </button>
+                 )}
              </div>
+
+             {/* 删除确认对话框 */}
+             {showDeleteConfirm && (
+               <motion.div
+                 initial={{ opacity: 0, y: 10 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 className="mt-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20"
+               >
+                 <p className="text-red-400 text-sm mb-3 text-center">确定要删除这张照片吗？此操作不可撤销。</p>
+                 <div className="flex space-x-2">
+                   <button
+                     onClick={() => setShowDeleteConfirm(false)}
+                     className="flex-1 py-2 rounded-lg bg-white/5 text-white/70 text-sm hover:bg-white/10"
+                   >
+                     取消
+                   </button>
+                   <button
+                     onClick={handleDelete}
+                     disabled={isDeleting}
+                     className="flex-1 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600 disabled:opacity-50 flex items-center justify-center"
+                   >
+                     {isDeleting ? <Loader2 size={14} className="animate-spin" /> : '确认删除'}
+                   </button>
+                 </div>
+               </motion.div>
+             )}
           </div>
         </motion.div>
       </motion.div>

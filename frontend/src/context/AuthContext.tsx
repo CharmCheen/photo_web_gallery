@@ -3,19 +3,15 @@ import { User } from '../types';
 import { api } from '../services/api';
 
 interface LoginPayload {
-  method: 'password' | 'sms';
-  email?: string;
-  password?: string;
-  phone?: string;
-  code?: string;
+  email: string;
+  code: string;
 }
 
 interface RegisterPayload {
   name: string;
-  email?: string;
+  email: string;
+  code: string;
   password?: string;
-  phone?: string;
-  code?: string;
 }
 
 interface AuthContextType {
