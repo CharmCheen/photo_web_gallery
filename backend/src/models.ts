@@ -8,6 +8,7 @@ export interface IUser extends Document {
   avatar?: string;
   bio?: string;
   emailVerified: boolean;
+  phone?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,6 +21,7 @@ const UserSchema = new Schema<IUser>({
   avatar: { type: String },
   bio: { type: String, default: '新晋视觉创作者。' },
   emailVerified: { type: Boolean, default: false },
+  phone: { type: String },
 }, {
   timestamps: true, // 自动添加 createdAt 和 updatedAt
 });

@@ -296,7 +296,7 @@ app.get('/api/photos', async (req: Request, res: Response) => {
       authorId: photo.authorId,
       likes: photo.likes,
       description: photo.description,
-      tags: photo.tags,
+      tags: Array.isArray(photo.tags) ? photo.tags : [],
     })),
     pagination: {
       page,

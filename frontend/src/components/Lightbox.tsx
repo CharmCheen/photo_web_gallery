@@ -20,6 +20,11 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload, 
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  const safeAuthor = currentPhoto.author || '匿名作者';
+  const authorInitial = safeAuthor.slice(0, 1) || '·';
+  const safeTags = Array.isArray(currentPhoto.tags) ? currentPhoto.tags : [];
+  const displayUrl = currentPhoto.url || currentPhoto.thumbnailUrl || '';
+
   // 判断是否是作者本人
   const isOwner = user && currentPhoto.authorId === user.id;
 
@@ -134,8 +139,8 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload, 
         <div className="flex-1 bg-black relative flex items-center justify-center p-0 md:p-8">
            <motion.img
             layoutId={`image-${currentPhoto.id}`}
-            src={currentPhoto.url}
-            alt={currentPhoto.description}
+            src={displayUrl}
+            alt={currentPhoto.description || safeAuthor}
             className="max-h-full max-w-full object-contain rounded-lg shadow-2xl"
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
           />
@@ -153,10 +158,10 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload, 
             {/* Header */}
             <div className="flex items-center space-x-4 mb-10">
                 <div className="w-14 h-14 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center text-white font-medium text-xl shadow-lg">
-                    {currentPhoto.author[0]}
+                {authorInitial}
                 </div>
                 <div>
-                    <h3 className="text-white font-semibold text-lg tracking-tight">{currentPhoto.author}</h3>
+                <h3 className="text-white font-semibold text-lg tracking-tight">{safeAuthor}</h3>
                     <p className="text-secondary text-sm font-medium">独立摄影师</p>
                 </div>
             </div>
@@ -175,7 +180,7 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload, 
                 <div>
                    <h4 className="text-secondary text-xs font-bold uppercase tracking-widest mb-3 opacity-60">标签</h4>
                    <div className="flex flex-wrap gap-2">
-                      {currentPhoto.tags.map(tag => (
+                    {safeTags.map(tag => (
                           <span key={tag} className="px-3 py-1.5 rounded-lg bg-white/5 text-primary/80 text-xs font-medium hover:bg-white/10 transition-colors cursor-default border border-white/5">
                               #{tag}
                           </span>

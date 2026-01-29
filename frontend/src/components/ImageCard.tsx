@@ -6,6 +6,8 @@ export const ImageCard: React.FC<ImageCardProps> = ({ photo, onClick }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
   // 使用缩略图，如果没有则使用原图
   const displayUrl = photo.thumbnailUrl || photo.url;
+  const safeAuthor = photo.author || '匿名作者';
+  const authorInitial = safeAuthor.slice(0, 1) || '·';
 
   return (
     <motion.div
@@ -46,9 +48,9 @@ export const ImageCard: React.FC<ImageCardProps> = ({ photo, onClick }) => {
         <div className="absolute bottom-0 left-0 right-0 p-5 opacity-0 group-hover:opacity-100 transition-opacity duration-400 transform translate-y-1 group-hover:translate-y-0 ease-out">
            <div className="flex items-center space-x-2">
              <div className="w-5 h-5 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-[10px] text-white">
-               {photo.author[0]}
+               {authorInitial}
              </div>
-             <p className="text-white/90 text-[13px] font-medium tracking-wide drop-shadow-md backdrop-blur-sm px-2 py-1 rounded-full bg-black/10">{photo.author}</p>
+             <p className="text-white/90 text-[13px] font-medium tracking-wide drop-shadow-md backdrop-blur-sm px-2 py-1 rounded-full bg-black/10">{safeAuthor}</p>
            </div>
         </div>
       </div>
