@@ -11,6 +11,11 @@ body {
   /* Smooth scale font rendering */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-image:
+    radial-gradient(1200px 600px at 20% -10%, rgba(41, 151, 255, 0.25), transparent 60%),
+    radial-gradient(900px 500px at 80% 0%, rgba(255, 255, 255, 0.08), transparent 60%),
+    radial-gradient(700px 500px at 50% 100%, rgba(255, 255, 255, 0.06), transparent 55%);
+  background-attachment: fixed;
 }
 
 /* Custom Scrollbar - refined */
@@ -36,4 +41,24 @@ body {
 /* Glassmorphism utilities */
 .glass-panel {
   @apply bg-glass backdrop-blur-xl border border-white/5;
+}
+
+/* Soft surface card */
+.soft-card {
+  @apply bg-white/[0.04] border border-white/10 backdrop-blur-xl shadow-[0_20px_80px_rgba(0,0,0,0.35)];
+}
+
+/* Thin separator */
+.divider {
+  @apply h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent;
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

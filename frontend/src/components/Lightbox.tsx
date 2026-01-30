@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Photo } from '../types';
 import { api } from '../services/api';
 import { Download, X, Heart, Share2, Trash2, Loader2 } from 'lucide-react'; 
@@ -14,6 +14,7 @@ interface LightboxProps {
 
 export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload, onDelete }) => {
   const { user } = useAuth();
+  const prefersReducedMotion = useReducedMotion();
   const [currentPhoto, setCurrentPhoto] = useState(photo);
   const [isLiking, setIsLiking] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
@@ -112,10 +113,10 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload, 
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
+      initial={prefersReducedMotion ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }} 
+      transition={{ duration: prefersReducedMotion ? 0 : 0.4, ease: [0.32, 0.72, 0, 1] }} 
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95 backdrop-blur-3xl"
       onClick={onClose}
     >
@@ -133,7 +134,7 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload, 
         layoutId={`card-container-${photo.id}`}
         className="relative w-full h-full md:h-[92vh] md:w-[92vw] max-w-[1600px] md:rounded-[24px] bg-[#000000] overflow-hidden flex flex-col md:flex-row shadow-2xl border border-white/10"
         onClick={(e) => e.stopPropagation()}
-        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 30 }}
       >
         {/* Image Area */}
         <div className="flex-1 bg-black relative flex items-center justify-center p-0 md:p-8">
@@ -148,10 +149,10 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload, 
 
         {/* Sidebar */}
         <motion.div 
-          initial={{ opacity: 0, x: 20 }}
+          initial={prefersReducedMotion ? false : { opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 10 }}
-          transition={{ delay: 0.2, duration: 0.5, ease: [0.25, 1, 0.5, 1] }}
+          transition={{ delay: prefersReducedMotion ? 0 : 0.2, duration: prefersReducedMotion ? 0 : 0.5, ease: [0.25, 1, 0.5, 1] }}
           className="w-full md:w-[400px] bg-[#1c1c1e]/80 backdrop-blur-2xl flex flex-col border-l border-white/5"
         >
           <div className="flex-1 overflow-y-auto p-10">

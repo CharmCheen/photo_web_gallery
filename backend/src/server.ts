@@ -308,6 +308,33 @@ app.get('/api/photos', async (req: Request, res: Response) => {
   });
 });
 
+// 获取单张照片详情
+app.get('/api/photos/:id', async (req: Request, res: Response) => {
+  try {
+    const photo = await PhotoModel.findById(req.params.id);
+
+    if (!photo) {
+      res.status(404).json({ message: '照片不存在或已删除' });
+      return;
+    }
+
+    res.json({
+      id: photo._id.toString(),
+      url: photo.url,
+      thumbnailUrl: photo.thumbnailUrl || photo.url,
+      width: photo.width,
+      height: photo.height,
+      author: photo.author,
+      authorId: photo.authorId,
+      likes: photo.likes,
+      description: photo.description,
+      tags: Array.isArray(photo.tags) ? photo.tags : [],
+    });
+  } catch (error) {
+    res.status(500).json({ message: '获取照片详情失败' });
+  }
+});
+
 app.post('/api/photos/upload', upload.single('file'), async (req: Request, res: Response) => {
   const schema = z.object({
     title: z.string().optional(),

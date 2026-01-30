@@ -74,6 +74,9 @@ export const api = {
       if (search) query.set('search', search);
       return requestJson(`/api/photos?${query.toString()}`);
     },
+    get: async (id: string): Promise<Photo> => {
+      return requestJson(`/api/photos/${id}`);
+    },
     upload: async (payload: FormData): Promise<Photo> => {
       return requestForm('/api/photos/upload', payload);
     },

@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { motion, useSpring, useMotionValue } from 'framer-motion';
+import { motion, useSpring, useMotionValue, useReducedMotion } from 'framer-motion';
 
 export const CustomCursor: React.FC = () => {
   const [isHovered, setIsHovered] = useState(false);
+  const [enabled, setEnabled] = useState(true);
+  const prefersReducedMotion = useReducedMotion();
   
   const mouseX = useMotionValue(-100);
   const mouseY = useMotionValue(-100);
@@ -12,6 +14,27 @@ export const CustomCursor: React.FC = () => {
   const springY = useSpring(mouseY, springConfig);
 
   useEffect(() => {
+    const mediaQuery = window.matchMedia('(hover: hover) and (pointer: fine)');
+    const updateEnabled = () => setEnabled(mediaQuery.matches);
+    updateEnabled();
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', updateEnabled);
+    } else {
+      mediaQuery.addListener(updateEnabled);
+    }
+
+    return () => {
+      if (mediaQuery.addEventListener) {
+        mediaQuery.removeEventListener('change', updateEnabled);
+      } else {
+        mediaQuery.removeListener(updateEnabled);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || prefersReducedMotion) return;
     const moveCursor = (e: MouseEvent) => {
       mouseX.set(e.clientX - 16);
       mouseY.set(e.clientY - 16);
@@ -33,7 +56,9 @@ export const CustomCursor: React.FC = () => {
       window.removeEventListener('mousemove', moveCursor);
       window.removeEventListener('mouseover', handleMouseOver);
     };
-  }, [mouseX, mouseY]);
+  }, [mouseX, mouseY, enabled, prefersReducedMotion]);
+
+  if (!enabled || prefersReducedMotion) return null;
 
   return (
     <>

@@ -31,19 +31,22 @@ export const Navbar: React.FC<NavbarProps> = ({
     <motion.nav 
       className={`fixed top-0 left-0 right-0 z-40 transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${
         isScrolled 
-          ? 'bg-glass backdrop-blur-xl border-b border-white/5 py-3' 
+          ? 'bg-glass backdrop-blur-xl border-b border-white/10 py-3' 
           : 'bg-transparent border-b border-transparent py-6'
       }`}
     >
       <div className="max-w-[1920px] mx-auto px-6 md:px-12 flex items-center justify-between">
         
         <div className="flex items-center space-x-10">
-           <span className="font-sans font-semibold text-lg tracking-tight text-white/90">Lumina</span>
+           <div className="flex items-center gap-3">
+             <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10 border border-white/15 text-xs font-semibold">L</span>
+             <span className="font-sans font-semibold text-lg tracking-tight text-white/90">Lumina</span>
+           </div>
            
            <div className="hidden md:flex items-center space-x-8">
               <button 
                 onClick={onDiscoverClick}
-                className="text-sm font-medium text-secondary hover:text-white transition-colors tracking-wide"
+                className="text-sm font-medium text-white/70 hover:text-white transition-colors tracking-wide"
               >
                 探索
               </button>
@@ -64,7 +67,7 @@ export const Navbar: React.FC<NavbarProps> = ({
              <>
                 <button 
                   onClick={onUploadClick}
-                  className="hidden md:block text-sm font-medium text-white hover:text-accent transition-colors tracking-wide"
+                  className="hidden md:inline-flex items-center gap-2 text-sm font-medium text-white/90 hover:text-white transition-colors tracking-wide bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-full"
                 >
                   上传作品
                 </button>
@@ -79,7 +82,7 @@ export const Navbar: React.FC<NavbarProps> = ({
            ) : (
              <button 
                onClick={onLoginClick}
-               className="bg-white text-black px-5 py-2 rounded-full text-sm font-medium hover:bg-white/90 transition-colors tracking-wide"
+               className="bg-white text-black px-5 py-2 rounded-full text-sm font-medium hover:bg-white/90 transition-colors tracking-wide shadow-[0_10px_30px_rgba(255,255,255,0.15)]"
              >
                登录
              </button>
