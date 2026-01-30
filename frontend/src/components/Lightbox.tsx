@@ -21,9 +21,17 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload, 
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // 当 photo prop 变化时，同步更新 currentPhoto state
+  useEffect(() => {
+    setCurrentPhoto(photo);
+    setIsLiked(false); // 重置点赞状态，等待重新获取
+    setShowDeleteConfirm(false); // 重置删除确认状态
+  }, [photo.id]);
+
   const safeAuthor = currentPhoto.author || '匿名作者';
   const authorInitial = safeAuthor.slice(0, 1) || '·';
   const safeTags = Array.isArray(currentPhoto.tags) ? currentPhoto.tags : [];
+  // 优先使用原图 URL
   const displayUrl = currentPhoto.url || currentPhoto.thumbnailUrl || '';
 
   // 判断是否是作者本人
@@ -131,20 +139,30 @@ export const Lightbox: React.FC<LightboxProps> = ({ photo, onClose, onDownload, 
         </div>
 
       <motion.div
-        layoutId={`card-container-${photo.id}`}
+        layoutId={`card-container-${currentPhoto.id}`}
         className="relative w-full h-full md:h-[92vh] md:w-[92vw] max-w-[1600px] md:rounded-[24px] bg-[#000000] overflow-hidden flex flex-col md:flex-row shadow-2xl border border-white/10"
         onClick={(e) => e.stopPropagation()}
         transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 30 }}
       >
         {/* Image Area */}
         <div className="flex-1 bg-black relative flex items-center justify-center p-0 md:p-8">
-           <motion.img
-            layoutId={`image-${currentPhoto.id}`}
-            src={displayUrl}
-            alt={currentPhoto.description || safeAuthor}
-            className="max-h-full max-w-full object-contain rounded-lg shadow-2xl"
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          />
+           {displayUrl ? (
+             <motion.img
+              layoutId={`image-${currentPhoto.id}`}
+              src={displayUrl}
+              alt={currentPhoto.description || safeAuthor}
+              className="max-h-full max-w-full object-contain rounded-lg shadow-2xl"
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              onError={(e) => {
+                console.error('图片加载失败:', displayUrl);
+                (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"%3E%3Crect fill="%23333" width="400" height="300"/%3E%3Ctext fill="%23999" font-family="sans-serif" font-size="18" text-anchor="middle" x="200" y="150"%3E图片加载失败%3C/text%3E%3C/svg%3E';
+              }}
+            />
+           ) : (
+             <div className="flex items-center justify-center text-white/50">
+               <span>图片加载中...</span>
+             </div>
+           )}
         </div>
 
         {/* Sidebar */}

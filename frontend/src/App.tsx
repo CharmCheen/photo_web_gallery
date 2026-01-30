@@ -111,9 +111,10 @@ const AppContent: React.FC = () => {
       </Routes>
 
       {/* Global Modals */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {selectedPhoto && (
           <Lightbox 
+            key={selectedPhoto.id}
             photo={selectedPhoto} 
             onClose={handleLightboxClose} 
             onDownload={(photo) => showToast('正在下载 4K 原图...')}
