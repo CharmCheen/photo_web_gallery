@@ -20,12 +20,12 @@ const AppContent: React.FC = () => {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isDiscoverOpen, setIsDiscoverOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [authModal, setAuthModal] = useState<{ isOpen: boolean, mode: 'login' | 'register' }>({ 
-    isOpen: false, 
-    mode: 'login' 
+  const [authModal, setAuthModal] = useState<{ isOpen: boolean, mode: 'login' | 'register' }>({
+    isOpen: false,
+    mode: 'login'
   });
   const [toast, setToast] = useState<{ msg: string, id: number } | null>(null);
-  
+
   // 搜索和筛选状态
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
@@ -88,35 +88,37 @@ const AppContent: React.FC = () => {
   }, [location.search, navigate, selectedPhoto?.id, showToast]);
 
   return (
-    <Layout 
-      onUploadClick={() => setIsUploadOpen(true)}
-      onDiscoverClick={() => setIsDiscoverOpen(true)}
-      onAuthClick={() => setAuthModal({ isOpen: true, mode: 'login' })}
-      onSearch={handleSearch}
-      onTagSelect={handleTagSelect}
-    >
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <HomePage 
-              onPhotoSelect={handlePhotoOpen} 
-              refreshKey={refreshKey} 
-              onError={showToast}
-              searchQuery={searchQuery}
-              selectedTag={selectedTag}
-            />
-          }
-        />
-      </Routes>
+    <>
+      <Layout
+        onUploadClick={() => setIsUploadOpen(true)}
+        onDiscoverClick={() => setIsDiscoverOpen(true)}
+        onAuthClick={() => setAuthModal({ isOpen: true, mode: 'login' })}
+        onSearch={handleSearch}
+        onTagSelect={handleTagSelect}
+      >
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <HomePage
+                onPhotoSelect={handlePhotoOpen}
+                refreshKey={refreshKey}
+                onError={showToast}
+                searchQuery={searchQuery}
+                selectedTag={selectedTag}
+              />
+            }
+          />
+        </Routes>
+      </Layout>
 
-      {/* Global Modals */}
+      {/* Global Modals - 放在 Layout 外部，避免被 overflow-hidden 遮挡 */}
       <AnimatePresence mode="wait">
         {selectedPhoto && (
-          <Lightbox 
+          <Lightbox
             key={selectedPhoto.id}
-            photo={selectedPhoto} 
-            onClose={handleLightboxClose} 
+            photo={selectedPhoto}
+            onClose={handleLightboxClose}
             onDownload={(photo) => showToast('正在下载 4K 原图...')}
             onDelete={(photoId) => {
               showToast('照片已删除');
@@ -126,36 +128,36 @@ const AppContent: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <UploadModal 
-        isOpen={isUploadOpen} 
-        onClose={() => setIsUploadOpen(false)} 
+      <UploadModal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
         onUpload={(photo) => {
-            showToast('发布成功');
-            setRefreshKey((prev) => prev + 1);
-            setIsUploadOpen(false);
-            // In a real app, trigger a refresh of the gallery here
-        }} 
+          showToast('发布成功');
+          setRefreshKey((prev) => prev + 1);
+          setIsUploadOpen(false);
+          // In a real app, trigger a refresh of the gallery here
+        }}
         onError={showToast}
       />
 
-      <AuthModal 
-        isOpen={authModal.isOpen} 
+      <AuthModal
+        isOpen={authModal.isOpen}
         mode={authModal.mode}
         onClose={() => setAuthModal(prev => ({ ...prev, isOpen: false }))}
         onSwitchMode={() => setAuthModal(prev => ({ ...prev, mode: prev.mode === 'login' ? 'register' : 'login' }))}
         onSuccess={() => {
-            setAuthModal(prev => ({ ...prev, isOpen: false }));
+          setAuthModal(prev => ({ ...prev, isOpen: false }));
           showToast(authModal.mode === 'login' ? '欢迎回来' : '欢迎加入 Lumina');
         }}
       />
-      
-      <DiscoverModal 
-        isOpen={isDiscoverOpen} 
-        onClose={() => setIsDiscoverOpen(false)} 
+
+      <DiscoverModal
+        isOpen={isDiscoverOpen}
+        onClose={() => setIsDiscoverOpen(false)}
       />
 
       {toast && <Toast message={toast.msg} onClose={() => setToast(null)} />}
-    </Layout>
+    </>
   );
 };
 
